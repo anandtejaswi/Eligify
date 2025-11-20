@@ -1,2 +1,4 @@
 flask
-pdfminer.six
+pytesseract
+pdf2image
+Pillow
