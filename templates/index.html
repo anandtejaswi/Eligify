@@ -309,6 +309,71 @@
     // EVENT HANDLER
     // -----------------------------------------------------------------
 
+    const firstNameInput = document.getElementById('firstName');
+    const emailInput = document.getElementById('email');
+
+    /**
+     * Sanitises names by trimming, collapsing inner whitespace and removing unwanted chars.
+     * Allows alphabets, spaces, hyphen, apostrophe and dot.
+     */
+    function capitalizeWords(value) {
+        return value
+            .split(' ')
+            .filter(Boolean)
+            .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+            .join(' ');
+    }
+
+    function sanitizeNameInput(value) {
+        if (typeof value !== 'string') return '';
+        const trimmed = value.trim();
+        if (!trimmed) return '';
+        const collapsedWhitespace = trimmed.replace(/\s+/g, ' ');
+        const cleaned = collapsedWhitespace.replace(/[^A-Za-z.'\-\s]/g, '');
+        if (!cleaned) return '';
+        return capitalizeWords(cleaned);
+    }
+
+    /**
+     * Sanitises email by trimming whitespace and lowercasing.
+     */
+    function sanitizeEmailInput(value) {
+        if (typeof value !== 'string') return '';
+        return value.trim().toLowerCase();
+    }
+
+    function isValidEmail(value) {
+        if (!value) return false;
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return emailRegex.test(value);
+    }
+
+    function updateInputWithSanitizer(inputEl, sanitizer) {
+        const sanitisedValue = sanitizer(inputEl.value);
+        if (inputEl.value !== sanitisedValue) {
+            inputEl.value = sanitisedValue;
+        }
+        return sanitisedValue;
+    }
+
+    // Apply sanitisation rules as the user interacts with the inputs
+    [
+        { element: firstNameInput, sanitizer: sanitizeNameInput },
+        { element: emailInput, sanitizer: sanitizeEmailInput },
+    ].forEach(({ element, sanitizer }) => {
+        element.addEventListener('blur', () => {
+            const sanitisedValue = updateInputWithSanitizer(element, sanitizer);
+            if (!sanitisedValue) {
+                element.setCustomValidity('This field cannot be empty or contain only invalid characters.');
+            } else {
+                element.setCustomValidity('');
+            }
+        });
+        element.addEventListener('input', () => {
+            element.setCustomValidity('');
+        });
+    });
+
     document.getElementById('candidate-form').addEventListener('submit', function(e) {
         e.preventDefault();
 
@@ -337,11 +402,27 @@
             return;
         }
 
+        const sanitizedFirstName = updateInputWithSanitizer(firstNameInput, sanitizeNameInput);
+        if (!sanitizedFirstName) {
+            formMessage.textContent = 'Please enter a valid name (alphabets, spaces, hyphen, dot or apostrophe).';
+            formMessage.className = 'mt-4 p-3 rounded-lg text-red-700 bg-red-100 block border border-red-300';
+            firstNameInput.focus();
+            return;
+        }
+
+        const sanitizedEmail = updateInputWithSanitizer(emailInput, sanitizeEmailInput);
+        if (!isValidEmail(sanitizedEmail)) {
+            formMessage.textContent = 'Please enter a valid email address.';
+            formMessage.className = 'mt-4 p-3 rounded-lg text-red-700 bg-red-100 block border border-red-300';
+            emailInput.focus();
+            return;
+        }
+
         const candidateProfile = {
-            firstName: document.getElementById('firstName').value,
+            firstName: sanitizedFirstName,
             dob: dobInput,
             age: calculateAge(dobInput),
-            email: document.getElementById('email').value,
+            email: sanitizedEmail,
             category: document.getElementById('category').value,
             p10: parseFloat(p10Raw),
             p12: parseFloat(p12Raw),
