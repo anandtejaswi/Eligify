@@ -1,38 +1,16 @@
 from io import BytesIO
 from typing import Union
 import os
-import re
 
 from PIL import Image
 import pytesseract
 from pdf2image import convert_from_bytes, convert_from_path
-import cv2
-import numpy as np
-
-# Optional text-layer extractor
+import re
 try:
     import PyPDF2  # type: ignore
 except Exception:
     PyPDF2 = None
 
-
-def _is_ocr_available() -> bool:
-    """Check if OCR prerequisites appear available (Poppler + Tesseract).
-
-    More robust checks: verify Poppler executables in the POPPLER_PATH and
-    resolve Tesseract either from env var or configured attribute.
-    """
-    poppler_path = os.getenv("POPPLER_PATH") or ""
-    pdftoppm = os.path.join(poppler_path, "pdftoppm.exe")
-    pdftocairo = os.path.join(poppler_path, "pdftocairo.exe")
-    poppler_ok = bool(poppler_path and (os.path.exists(pdftoppm) or os.path.exists(pdftocairo)))
-
-    env_tess = os.getenv("TESSERACT_CMD")
-    tess_attr = getattr(pytesseract.pytesseract, "tesseract_cmd", None)
-    tess_cmd = env_tess or tess_attr
-    tess_ok = bool(tess_cmd and os.path.exists(tess_cmd))
-
-    return poppler_ok and tess_ok
 
 def _configure_tesseract_from_env() -> None:
     cmd = os.getenv("TESSERACT_CMD")
@@ -45,14 +23,25 @@ def _configure_tesseract_from_env() -> None:
             pytesseract.pytesseract.tesseract_cmd = default_win_path
 
 
-def _images_from_input(input_obj: Union[bytes, bytearray, str, BytesIO], dpi: int = 300):
-    # Allow explicit Poppler path via environment variable
-    poppler_path = os.getenv("POPPLER_PATH")
+def _is_ocr_available() -> bool:
+    poppler_path = os.getenv("POPPLER_PATH") or ""
+    pdftoppm = os.path.join(poppler_path, "pdftoppm.exe")
+    pdftocairo = os.path.join(poppler_path, "pdftocairo.exe")
+    poppler_ok = bool(poppler_path and (os.path.exists(pdftoppm) or os.path.exists(pdftocairo)))
 
+    env_tess = os.getenv("TESSERACT_CMD")
+    tess_attr = getattr(pytesseract.pytesseract, "tesseract_cmd", None)
+    tess_cmd = env_tess or tess_attr
+    tess_ok = bool(tess_cmd and os.path.exists(tess_cmd))
+
+    return poppler_ok and tess_ok
+
+
+def _images_from_input(input_obj: Union[bytes, bytearray, str, BytesIO], dpi: int = 300):
+    poppler_path = os.getenv("POPPLER_PATH")
     if isinstance(input_obj, (bytes, bytearray)):
         return convert_from_bytes(input_obj, dpi=dpi, poppler_path=poppler_path)
     if hasattr(input_obj, "read"):
-        # file-like object
         data = input_obj.read()
         return convert_from_bytes(data, dpi=dpi, poppler_path=poppler_path)
     if isinstance(input_obj, str):
@@ -61,7 +50,6 @@ def _images_from_input(input_obj: Union[bytes, bytearray, str, BytesIO], dpi: in
 
 
 def _bytes_from_input(input_obj: Union[bytes, bytearray, str, BytesIO]) -> bytes:
-    """Normalize supported inputs to PDF bytes."""
     if isinstance(input_obj, (bytes, bytearray)):
         return bytes(input_obj)
     if hasattr(input_obj, "read"):
@@ -73,15 +61,9 @@ def _bytes_from_input(input_obj: Union[bytes, bytearray, str, BytesIO]) -> bytes
 
 
 def _extract_text_layer(input_obj: Union[bytes, bytearray, str, BytesIO]) -> str:
-    """
-    Extract text using the PDF's embedded text layer (if available) via PyPDF2.
-    Returns an empty string if PyPDF2 is unavailable or if no text was found.
-    """
     if PyPDF2 is None:
         return ""
-
     try:
-        # Use bytes for consistent handling across input types
         data = _bytes_from_input(input_obj)
         reader = PyPDF2.PdfReader(BytesIO(data))
         texts = []
@@ -91,23 +73,12 @@ def _extract_text_layer(input_obj: Union[bytes, bytearray, str, BytesIO]) -> str
                 texts.append(t)
         return "\n\n".join(texts).strip()
     except Exception:
-        # Any parsing failures -> fall back to OCR
         return ""
 
 
-def parse_pdf(
-    input_obj: Union[bytes, bytearray, str, BytesIO],
-    dpi: int = 300,
-    ocr_lang: str = "eng",
-    method: str = "auto",
-) -> str:
+def parse_pdf(input_obj: Union[bytes, bytearray, str, BytesIO], dpi: int = 300, ocr_lang: str = "eng", method: str = "auto") -> str:
     """
-    Extract text from a PDF.
-
-    Strategies:
-    - method='text': Use embedded text layer only (PyPDF2)
-    - method='ocr': Use OCR on rasterized pages only (Tesseract)
-    - method='auto': Prefer text layer; fallback to OCR if text seems empty
+    Extract text from a PDF using OCR (PyTesseract).
 
     - input_obj: bytes, file-like, or filesystem path to a PDF
     - dpi: rasterization DPI for converting PDF pages to images
@@ -116,77 +87,39 @@ def parse_pdf(
     _configure_tesseract_from_env()
     method = (method or "auto").lower()
 
-    # Try text-layer first when requested or in auto-mode
     if method in ("text", "auto"):
         text_layer = _extract_text_layer(input_obj)
         if method == "text":
             if text_layer and text_layer.strip():
                 return text_layer
-            return (
-                "No text layer found in PDF. Consider method='ocr' (requires Poppler + Tesseract)."
-            )
-        # In auto mode, only fallback if the text layer seems empty
+            return "No text layer found in PDF. Consider method='ocr' (requires Poppler + Tesseract)."
         if text_layer and len(text_layer.strip()) >= 20:
             return text_layer
 
-    # If in auto-mode and OCR prerequisites are missing, return empty string gracefully
     if method == "auto" and not _is_ocr_available():
-        return (
-            "OCR prerequisites missing. Set POPPLER_PATH to Poppler 'bin' (folder containing pdftoppm.exe) and TESSERACT_CMD to tesseract.exe."
-        )
+        return "OCR prerequisites missing. Set POPPLER_PATH to Poppler 'bin' and TESSERACT_CMD to tesseract.exe."
 
-    # OCR path
     try:
         images = _images_from_input(input_obj, dpi=dpi)
     except Exception:
-        # Rasterization failed (likely Poppler missing or corrupt PDF)
         if method == "ocr":
-            return (
-                "Failed to rasterize PDF. Ensure Poppler is installed and POPPLER_PATH is set correctly."
-            )
-        # In auto-mode, give a helpful message
-        return (
-            "Could not rasterize pages for OCR. Check Poppler installation and POPPLER_PATH."
-        )
+            return "Failed to rasterize PDF. Ensure Poppler is installed and POPPLER_PATH is set correctly."
+        return "Could not rasterize pages for OCR. Check Poppler installation and POPPLER_PATH."
 
     texts = []
     for img in images:
-        # Convert PIL image to OpenCV (numpy array)
-        arr = np.array(img)
-        if img.mode == "RGBA":
-            arr = cv2.cvtColor(arr, cv2.COLOR_RGBA2RGB)
-        elif img.mode == "RGB":
-            pass
-        elif img.mode == "L":
-            arr = cv2.cvtColor(arr, cv2.COLOR_GRAY2RGB)
-
-        # Grayscale
-        gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
-
-        # Denoise lightly
-        gray = cv2.bilateralFilter(gray, 9, 75, 75)
-
-        # Binarize with Otsu
-        _, thr = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-        # Optional: small morphological opening to remove specks
-        kernel = np.ones((1, 1), np.uint8)
-        thr = cv2.morphologyEx(thr, cv2.MORPH_OPEN, kernel)
-
+        if img.mode != "L":
+            img = img.convert("L")
         try:
-            text = pytesseract.image_to_string(thr, lang=ocr_lang, config="--psm 6")
+            text = pytesseract.image_to_string(img, lang=ocr_lang, config="--psm 6")
         except Exception:
-            # OCR failed (likely Tesseract not installed/configured) -> describe
             text = ""
         texts.append(text)
 
     merged = "\n\n".join(t.strip() for t in texts if t)
     if merged:
         return merged
-    # No OCR text
-    return (
-        "OCR produced no text. Verify Tesseract installation or try increasing DPI/improving image quality."
-    )
+    return "OCR produced no text. Verify Tesseract installation or try increasing DPI/improving image quality."
 
 
 def extract_text_from_pdf(
@@ -195,12 +128,6 @@ def extract_text_from_pdf(
     ocr_lang: str = "eng",
     method: str = "auto",
 ) -> str:
-    """
-    Convenience alias that mirrors `parse_pdf` for simpler imports and usage.
-
-    Example:
-        text = extract_text_from_pdf("lib/test_input.pdf")
-    """
     return parse_pdf(input_obj, dpi=dpi, ocr_lang=ocr_lang, method=method)
 
 
@@ -210,19 +137,6 @@ def extract_text_with_info(
     ocr_lang: str = "eng",
     method: str = "auto",
 ):
-    """
-    Extract text but also return diagnostic information explaining what happened.
-
-    Returns a dict with keys:
-    - text: extracted text (may be empty)
-    - decided_method: 'text' | 'ocr' | 'none'
-    - text_layer_found: bool
-    - ocr_available: bool
-    - rasterize_ok: bool
-    - ocr_ok: bool
-    - warnings: list of strings describing why OCR was skipped/failing, etc.
-    - env: { poppler_path, tesseract_cmd }
-    """
     _configure_tesseract_from_env()
     method = (method or "auto").lower()
 
@@ -240,7 +154,6 @@ def extract_text_with_info(
         },
     }
 
-    # Text layer attempt
     text_layer = _extract_text_layer(input_obj)
     info["text_layer_found"] = bool(text_layer and text_layer.strip())
 
@@ -249,20 +162,16 @@ def extract_text_with_info(
         info["text"] = text_layer
         return info
 
-    # Decide if we should attempt OCR
     should_ocr = method == "ocr" or (method == "auto" and not info["text_layer_found"])
     if not should_ocr:
-        # No text layer and not instructed to OCR -> return empty
         info["warnings"].append("No text layer found and OCR not requested.")
         return info
 
-    # If OCR prerequisites missing and method is auto, explain and return
     if method == "auto" and not info["ocr_available"]:
         info["decided_method"] = "ocr"
         info["warnings"].append("OCR prerequisites missing (POPPLER_PATH/TESSERACT_CMD).")
         return info
 
-    # Try rasterization
     try:
         images = _images_from_input(input_obj, dpi=dpi)
         info["rasterize_ok"] = True
@@ -271,21 +180,12 @@ def extract_text_with_info(
         info["warnings"].append("Failed to rasterize PDF (Poppler not installed or invalid POPPLER_PATH).")
         return info
 
-    # Try OCR per page
     texts = []
     for img in images:
-        arr = np.array(img)
-        if img.mode == "RGBA":
-            arr = cv2.cvtColor(arr, cv2.COLOR_RGBA2RGB)
-        elif img.mode == "L":
-            arr = cv2.cvtColor(arr, cv2.COLOR_GRAY2RGB)
-        gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
-        gray = cv2.bilateralFilter(gray, 9, 75, 75)
-        _, thr = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        kernel = np.ones((1, 1), np.uint8)
-        thr = cv2.morphologyEx(thr, cv2.MORPH_OPEN, kernel)
+        if img.mode != "L":
+            img = img.convert("L")
         try:
-            t = pytesseract.image_to_string(thr, lang=ocr_lang, config="--psm 6")
+            t = pytesseract.image_to_string(img, lang=ocr_lang, config="--psm 6")
         except Exception:
             t = ""
         texts.append(t)
@@ -297,6 +197,42 @@ def extract_text_with_info(
         info["warnings"].append("OCR produced no text. Check Tesseract installation or image quality.")
     info["text"] = merged
     return info
+
+
+def extract_headings_and_bullets(
+    input_obj: Union[bytes, bytearray, str, BytesIO],
+    dpi: int = 300,
+    ocr_lang: str = "eng",
+    method: str = "auto",
+) -> dict:
+    text = parse_pdf(input_obj, dpi=dpi, ocr_lang=ocr_lang, method=method)
+    if not isinstance(text, str) or not text.strip():
+        return {"headings": [], "items": [], "error": text or "No text"}
+    lines = [re.sub(r"\s+", " ", l).strip() for l in text.splitlines() if l.strip()]
+    bullets = []
+    heads = []
+    for l in lines:
+        if re.match(r"^(\d+\.|\-|•|●|▪|‣)\s+", l):
+            bullets.append(l)
+        elif len(l.split()) <= 6:
+            heads.append(l)
+    return {"headings": heads, "items": bullets}
+
+
+def extract_modification_items(
+    input_obj: Union[bytes, bytearray, str, BytesIO],
+    dpi: int = 300,
+    ocr_lang: str = "eng",
+    method: str = "auto",
+) -> list:
+    r = extract_headings_and_bullets(input_obj, dpi=dpi, ocr_lang=ocr_lang, method=method)
+    if "error" in r:
+        return []
+    items = []
+    for s in r.get("items", []):
+        s2 = re.sub(r"^[\-•●▪‣]+\s+", "", s)
+        items.append(s2)
+    return items
 
 
 def extract_marksheet_fields(
