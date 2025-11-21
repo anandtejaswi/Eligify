@@ -2,5 +2,3 @@ flask
 pytesseract
 pdf2image
 Pillow
-opencv-python
-PyPDF2
