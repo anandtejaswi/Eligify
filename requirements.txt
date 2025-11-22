@@ -4,3 +4,7 @@ pdf2image
 Pillow
 opencv-python
 PyPDF2
+flask-wtf
+WTForms
+email-validator
+werkzeug
