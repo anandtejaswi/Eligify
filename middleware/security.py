@@ -8,7 +8,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 
 # File upload security settings
-ALLOWED_EXTENSIONS = {'pdf'}
+ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg'}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 MAX_FILENAME_LENGTH = 255
 

@@ -4,13 +4,14 @@ from services.exam_repository import ExamRepository
 from services.db import SessionLocal
 from models.db_models import CandidateProfile, DocumentUpload, ParsedDocument, AcademicVerification
 import json
-from lib.pad_parser import extract_text_from_pdf, extract_marksheet_fields
+from lib.pdf_parser import extract_text_from_pdf, extract_marksheet_fields, extract_marksheet_fields_from_image
 from middleware.security import (
     validate_file_upload, validate_dpi, validate_method,
     sanitize_input, rate_limit
 )
 from functools import wraps
 from flask import session, jsonify
+from io import BytesIO
 
 def require_login(f):
     @wraps(f)
@@ -126,8 +127,9 @@ def parse_marksheet_ep():
         return jsonify({'error': error_msg}), 400
     
     try:
-        # Extract fields from marksheet
-        fields = extract_marksheet_fields(f, method=method, dpi=dpi)
+        mime = getattr(f, 'mimetype', '') or ''
+        is_img = str(mime).lower().startswith('image/') or f.filename.lower().endswith(('.png', '.jpg', '.jpeg'))
+        fields = extract_marksheet_fields_from_image(f) if is_img else extract_marksheet_fields(f, method=method, dpi=dpi)
         
         # Sanitize all string fields in the response
         if isinstance(fields, dict):
@@ -198,28 +200,115 @@ def verify_academic():
     is_valid, dpi, error_msg = validate_dpi(dpi_param)
     if not is_valid:
         return jsonify({'error': error_msg}), 400
+    # Optional tolerance parameter
+    tol_param = request.args.get('tolerance') or request.args.get('tol')
     try:
-        fields = extract_marksheet_fields(f, method=method, dpi=dpi) or {}
-        # Prefer percentage for 10/12, CGPA for UG; fall back across if missing
+        tolerance = float(tol_param) if tol_param is not None else 0.1
+        if tolerance < 0:
+            tolerance = 0.1
+    except Exception:
+        tolerance = 0.1
+    # Round the entered value for consistent comparison
+    entered_val = round(entered_val, 2)
+    try:
+        file_bytes = f.read()
+        buf = BytesIO(file_bytes)
+        mime = getattr(f, 'mimetype', '') or ''
+        is_img = str(mime).lower().startswith('image/') or f.filename.lower().endswith(('.png', '.jpg', '.jpeg'))
+        fields = (extract_marksheet_fields_from_image(BytesIO(file_bytes)) if is_img else extract_marksheet_fields(buf, method=method, dpi=dpi)) or {}
+        # Robust computation from raw fields if percentage missing
+        def safe_float(x):
+            try:
+                return float(x)
+            except Exception:
+                return None
+        total_marks = safe_float(fields.get('total_marks'))
+        max_marks = safe_float(fields.get('max_marks'))
+        if (total_marks is None or max_marks is None or max_marks <= 0):
+            subs = fields.get('subjects') or []
+            sm = sum((s.get('marks') or 0) for s in subs if isinstance(s.get('marks'), (int, float)))
+            sx = sum((s.get('max') or 0) for s in subs if isinstance(s.get('max'), (int, float)))
+            if sm > 0:
+                total_marks = sm
+            if (sx is None or sx <= 0) and subs:
+                sx = 100.0 * len([1 for s in subs if s.get('marks') is not None])
+            if sx and sx > 0:
+                max_marks = sx
+        calc_pct = None
+        if total_marks is not None and max_marks is not None and max_marks > 0:
+            calc_pct = (total_marks / max_marks) * 100.0
+        # Prefer percentage for 10/12, CGPA for UG; fall back to calc_pct
         extracted = None
+        source = None
         if stage in ('10', '12'):
             extracted = fields.get('percentage')
             if extracted is None:
                 extracted = fields.get('calculated_percentage')
+                source = 'calculated_percentage' if extracted is not None else source
+            if extracted is None:
+                extracted = calc_pct
+                source = 'computed_total' if extracted is not None else source
             if extracted is None:
                 extracted = fields.get('cgpa')
+                source = 'cgpa' if extracted is not None else source
+            if source is None and extracted is not None:
+                source = 'percentage'
         else:
             extracted = fields.get('cgpa')
             if extracted is None:
                 extracted = fields.get('percentage')
+                source = 'percentage' if extracted is not None else source
             if extracted is None:
                 extracted = fields.get('calculated_percentage')
-        try:
-            extracted_val = float(extracted) if extracted is not None else None
-        except Exception:
-            extracted_val = None
-        tolerance = 0.1
-        verified = int(extracted_val is not None and abs(extracted_val - entered_val) <= tolerance)
+                source = 'calculated_percentage' if extracted is not None else source
+            if extracted is None:
+                extracted = calc_pct
+                source = 'computed_total' if extracted is not None else source
+            if source is None and extracted is not None:
+                source = 'cgpa'
+        extracted_val = safe_float(extracted)
+        if extracted_val is not None:
+            extracted_val = round(extracted_val, 2)
+        if extracted_val is None or abs(extracted_val - entered_val) > tolerance:
+            buf2 = BytesIO(file_bytes)
+            fields = (extract_marksheet_fields_from_image(buf2) if is_img else extract_marksheet_fields(buf2, method='ocr', dpi=max(dpi or 300, 300))) or {}
+            total_marks = safe_float(fields.get('total_marks'))
+            max_marks = safe_float(fields.get('max_marks'))
+            calc_pct = None
+            if total_marks is not None and max_marks is not None and max_marks > 0:
+                calc_pct = (total_marks / max_marks) * 100.0
+            # Re-evaluate sources in fallback
+            if stage in ('10', '12'):
+                extracted = fields.get('percentage')
+                source = 'percentage' if extracted is not None else None
+                if extracted is None:
+                    extracted = fields.get('calculated_percentage')
+                    source = 'calculated_percentage' if extracted is not None else source
+                if extracted is None:
+                    extracted = calc_pct
+                    source = 'computed_total' if extracted is not None else source
+                if extracted is None:
+                    extracted = fields.get('cgpa')
+                    source = 'cgpa' if extracted is not None else source
+            else:
+                extracted = fields.get('cgpa')
+                source = 'cgpa' if extracted is not None else None
+                if extracted is None:
+                    extracted = fields.get('percentage')
+                    source = 'percentage' if extracted is not None else source
+                if extracted is None:
+                    extracted = fields.get('calculated_percentage')
+                    source = 'calculated_percentage' if extracted is not None else source
+                if extracted is None:
+                    extracted = calc_pct
+                    source = 'computed_total' if extracted is not None else source
+            extracted_val = safe_float(extracted)
+            if extracted_val is not None:
+                extracted_val = round(extracted_val, 2)
+        diff = None
+        if extracted_val is not None:
+            diff = round(abs(extracted_val - entered_val), 3)
+        verified = int(extracted_val is not None and diff is not None and diff <= tolerance)
         db = SessionLocal()
         upload = DocumentUpload(user_sub=session['user']['sub'], doc_type=f"marksheet-{stage}", filename=f.filename, mime=(getattr(f, 'mimetype', None) or 'application/pdf'), stored_path=None)
         db.add(upload)
@@ -229,6 +318,17 @@ def verify_academic():
         db.add(av)
         db.commit()
         db.close()
-        return jsonify({'stage': stage, 'entered': entered_val, 'extracted': extracted_val, 'verified': bool(verified), 'fields': fields})
+        return jsonify({
+            'stage': stage,
+            'entered': entered_val,
+            'extracted': extracted_val,
+            'difference': diff,
+            'tolerance': tolerance,
+            'comparison_source': source,
+            'total_marks': total_marks,
+            'max_marks': max_marks,
+            'verified': bool(verified),
+            'fields': fields
+        })
     except Exception:
         return jsonify({'error': 'Failed to verify academic document'}), 500

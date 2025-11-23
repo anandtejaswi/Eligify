@@ -3,6 +3,12 @@ from typing import Union
 import os
 
 from PIL import Image
+try:
+    import cv2  # type: ignore
+except Exception:
+    cv2 = None
+from PIL import ImageOps, ImageFilter
+import shutil
 import pytesseract
 from pdf2image import convert_from_bytes, convert_from_path
 import re
@@ -23,11 +29,32 @@ def _configure_tesseract_from_env() -> None:
             pytesseract.pytesseract.tesseract_cmd = default_win_path
 
 
+def _detect_poppler_path() -> str:
+    p = os.getenv("POPPLER_PATH") or ""
+    if p and os.path.exists(p):
+        return p
+    w = shutil.which("pdftoppm") or shutil.which("pdftocairo")
+    if w:
+        d = os.path.dirname(w)
+        os.environ["POPPLER_PATH"] = d
+        return d
+    try:
+        base = os.path.join(os.getenv("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Packages")
+        if os.path.exists(base):
+            for root, dirs, files in os.walk(base):
+                if "pdftoppm.exe" in files or "pdftocairo.exe" in files:
+                    os.environ["POPPLER_PATH"] = root
+                    return root
+    except Exception:
+        pass
+    return ""
+
+
 def _is_ocr_available() -> bool:
-    poppler_path = os.getenv("POPPLER_PATH") or ""
+    poppler_path = _detect_poppler_path()
     pdftoppm = os.path.join(poppler_path, "pdftoppm.exe")
     pdftocairo = os.path.join(poppler_path, "pdftocairo.exe")
-    poppler_ok = bool(poppler_path and (os.path.exists(pdftoppm) or os.path.exists(pdftocairo)))
+    poppler_ok = bool(poppler_path and (os.path.exists(pdftoppm) or os.path.exists(pdftocairo) or shutil.which("pdftoppm") or shutil.which("pdftocairo")))
 
     env_tess = os.getenv("TESSERACT_CMD")
     tess_attr = getattr(pytesseract.pytesseract, "tesseract_cmd", None)
@@ -38,7 +65,7 @@ def _is_ocr_available() -> bool:
 
 
 def _images_from_input(input_obj: Union[bytes, bytearray, str, BytesIO], dpi: int = 300):
-    poppler_path = os.getenv("POPPLER_PATH")
+    poppler_path = _detect_poppler_path() or None
     if isinstance(input_obj, (bytes, bytearray)):
         return convert_from_bytes(input_obj, dpi=dpi, poppler_path=poppler_path)
     if hasattr(input_obj, "read"):
@@ -235,18 +262,7 @@ def extract_modification_items(
     return items
 
 
-def extract_marksheet_fields(
-    input_obj: Union[bytes, bytearray, str, BytesIO],
-    dpi: int = 300,
-    ocr_lang: str = "eng",
-    method: str = "auto",
-) -> dict:
-    """Return key–value fields typically present on marksheets/degrees.
-
-    If extraction fails, returns {"error": <reason>}.
-    """
-    text = parse_pdf(input_obj, dpi=dpi, ocr_lang=ocr_lang, method=method)
-
+def _parse_marksheet_text(text: str) -> dict:
     issue_markers = (
         "No text layer found",
         "OCR prerequisites missing",
@@ -336,7 +352,11 @@ def extract_marksheet_fields(
         "sgpa",
     )
     subj_pattern = re.compile(
-        rf"^([A-Za-z][A-Za-z0-9 &./()\-]{{2,}})\s*(?:{sep}\s*)?([0-9]{{1,3}}(?:\.[0-9]+)?)(?:\s*/\s*([0-9]{{1,3}}))?\s*(?:([A-Za-z]{{1,3}}))?$",
+        rf"^([A-Za-z][A-Za-z0-9 .&,/()\-]{{2,}})\s*(?:{sep}\s*)?([0-9]{{1,3}}(?:\.[0-9]+)?)(?:\s*/\s*([0-9]{{1,3}}))?\s*(?:([A-Za-z]{{1,3}}))?$",
+        flags=re.IGNORECASE,
+    )
+    table_pattern = re.compile(
+        r"(?:\b\d{2,3}\s*[|]?\s+)?([A-Za-z][A-Za-z0-9 .&/()\-]{2,}?)\s+\d{2,3}\D?\s*[|\s]\s*\d{2,3}\D?\s*[|\s]\s*(\d{2,3})\b",
         flags=re.IGNORECASE,
     )
     for line in lines:
@@ -356,10 +376,30 @@ def extract_marksheet_fields(
                 max_val = None
             grade_val = (m.group(4) or "").strip() or None
             subjects.append({"name": subj_name, "marks": marks_val, "max": max_val, "grade": grade_val})
+            continue
+        tm = table_pattern.match(line)
+        if tm:
+            subj_name = tm.group(1).strip().replace(' .', '.').replace(' ,', ',')
+            try:
+                total_col = float(tm.group(2))
+            except Exception:
+                total_col = None
+            subjects.append({"name": subj_name, "marks": total_col, "max": 100.0, "grade": None})
+    for tm in re.finditer(table_pattern, joined):
+        subj_name = tm.group(1).strip().replace(' .', '.').replace(' ,', ',')
+        try:
+            total_col = float(tm.group(2))
+        except Exception:
+            total_col = None
+        subjects.append({"name": subj_name, "marks": total_col, "max": 100.0, "grade": None})
 
     total_marks = None
     max_marks = None
-    m_total = re.search(rf"(?:Total\s*marks?|Aggregate|Marks\s*Obtained)\s*{sep}\s*([0-9]{{1,4}})(?:\s*(?:out\s*of|of|/)?\s*([0-9]{{1,4}}))", joined, flags=re.IGNORECASE)
+    m_total = re.search(rf"(?:Total\s*marks?|Aggregate|Marks\s*Obtained)\s*{sep}\s*([0-9]{1,4})(?:\s*(?:out\s*of|of|/)?\s*([0-9]{1,4}))", joined, flags=re.IGNORECASE)
+    if not m_total:
+        m_total = re.search(r"^(?:GRAND\s+TOTAL|TOTAL)\s+([0-9]{1,4})\s*(?:/|of|out of)?\s*([0-9]{1,4})?\b", joined, flags=re.IGNORECASE | re.MULTILINE)
+    if not m_total:
+        m_total = re.search(r"(?:TOTAL\s*[:\-–—]?\s*)([0-9]{1,4})\s*(?:/|of|out of)?\s*([0-9]{1,4})?\b", joined, flags=re.IGNORECASE)
     if m_total:
         try:
             total_marks = float(m_total.group(1))
@@ -371,7 +411,6 @@ def extract_marksheet_fields(
         sm = sum((s.get("marks") or 0) for s in subjects if isinstance(s.get("marks"), (int, float)))
         sx = sum((s.get("max") or 0) for s in subjects if isinstance(s.get("max"), (int, float)))
         total_marks = sm if sm > 0 else None
-        # If denominators missing, infer from typical maxima (e.g., 100 per subject)
         if sx <= 0 and sm > 0 and len(subjects) > 0:
             sx = 100.0 * len([1 for s in subjects if s.get("marks") is not None])
         max_marks = sx if sx > 0 else None
@@ -410,6 +449,8 @@ def extract_marksheet_fields(
         "calculated_percentage": calculated_percentage,
         "subjects": subjects,
     }
+    if result["percentage"] is None and calculated_percentage is not None:
+        result["percentage"] = calculated_percentage
     subjects_map = {s.get("name"): {"marks": s.get("marks"), "max": s.get("max"), "grade": s.get("grade")} for s in subjects if s.get("name")}
     total_outoff = f"{int(total_marks) if isinstance(total_marks, (int, float)) else total_marks}/{int(max_marks) if isinstance(max_marks, (int, float)) else max_marks}" if (total_marks is not None and max_marks is not None) else None
     pref_val = result["percentage"] if result["percentage"] is not None else (result["cgpa"] if result["cgpa"] is not None else result["calculated_percentage"])
@@ -421,3 +462,71 @@ def extract_marksheet_fields(
         "percentage_cgpa": pref_val,
     })
     return result
+
+def extract_marksheet_fields(
+    input_obj: Union[bytes, bytearray, str, BytesIO],
+    dpi: int = 300,
+    ocr_lang: str = "eng",
+    method: str = "auto",
+) -> dict:
+    text = parse_pdf(input_obj, dpi=dpi, ocr_lang=ocr_lang, method=method)
+    return _parse_marksheet_text(text)
+
+def extract_marksheet_fields_from_image(
+    input_obj: Union[bytes, bytearray, str, BytesIO],
+    ocr_lang: str = "eng",
+) -> dict:
+    _configure_tesseract_from_env()
+    try:
+        if isinstance(input_obj, (bytes, bytearray)):
+            img = Image.open(BytesIO(input_obj))
+        elif hasattr(input_obj, "read"):
+            img = Image.open(input_obj)
+        elif isinstance(input_obj, str):
+            img = Image.open(input_obj)
+        else:
+            return {"error": "Unsupported input"}
+    except Exception:
+        return {"error": "Failed to open image"}
+    def _variants(im: Image.Image):
+        vars = []
+        if cv2 is None:
+            base = im.convert("L") if im.mode != "L" else im
+            base = ImageOps.autocontrast(base)
+            w, h = base.size
+            if max(w, h) < 1200:
+                s = 1200.0 / max(w, h)
+                base = base.resize((int(w * s), int(h * s)))
+            vars.append(base)
+            vars.append(base.filter(ImageFilter.MedianFilter(size=3)))
+            vars.append(base.filter(ImageFilter.GaussianBlur(radius=0.8)))
+            vars.append(ImageOps.invert(base))
+        else:
+            arr = cv2.cvtColor(np.array(im), cv2.COLOR_RGB2GRAY) if im.mode != "L" else np.array(im)
+            h, w = arr.shape[:2]
+            if max(w, h) < 1200:
+                s = 1200.0 / max(w, h)
+                arr = cv2.resize(arr, (int(w * s), int(h * s)), interpolation=cv2.INTER_CUBIC)
+            v1 = arr
+            v2 = cv2.medianBlur(arr, 3)
+            v3 = cv2.GaussianBlur(arr, (3, 3), 0.8)
+            v4 = cv2.bilateralFilter(arr, 9, 75, 75)
+            v5 = cv2.adaptiveThreshold(v4, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 35, 11)
+            for a in (v1, v2, v3, v4, v5):
+                vars.append(Image.fromarray(a))
+        return vars
+    try:
+        import numpy as np  # type: ignore
+    except Exception:
+        np = None
+    texts = []
+    for var in _variants(img):
+        for cfg in ("--psm 6", "--psm 4", "--psm 11", "--oem 1 --psm 6"):
+            try:
+                t = pytesseract.image_to_string(var, lang=ocr_lang, config=cfg)
+            except Exception:
+                t = ""
+            if t and t.strip():
+                texts.append(t)
+    merged = "\n\n".join(s.strip() for s in texts if s.strip())
+    return _parse_marksheet_text(merged)
