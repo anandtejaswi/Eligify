@@ -41,6 +41,19 @@ class ParsedDocument(Base):
     parsed_json = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+class AcademicVerification(Base):
+    __tablename__ = 'academic_verifications'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_sub = Column(String(64), ForeignKey('users.sub'), nullable=False)
+    stage = Column(String(10), nullable=False)  # '10', '12', 'UG'
+    entered_value = Column(Float, nullable=False)
+    extracted_value = Column(Float)
+    verified = Column(Integer, nullable=False)  # 1 true, 0 false
+    upload_id = Column(Integer, ForeignKey('document_uploads.id'))
+    filename = Column(String(255))
+    mime = Column(String(64))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
 class Exam(Base):
     __tablename__ = 'exams'
     exam_id = Column(Integer, primary_key=True)

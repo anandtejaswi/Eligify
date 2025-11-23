@@ -257,7 +257,17 @@ def extract_marksheet_fields(
     if not text or any(m in text for m in issue_markers):
         return {"error": text or "No text extracted"}
 
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    import unicodedata
+    def _normalize(s: str) -> str:
+        s2 = unicodedata.normalize('NFKC', s)
+        s2 = s2.replace('\u2013', '-').replace('\u2014', '-').replace('\u2212', '-')
+        s2 = s2.replace('\u00A0', ' ').replace('\u2009', ' ').replace('\u2026', '...')
+        s2 = s2.replace('–', '-').replace('—', '-')
+        s2 = re.sub(r"\s+/\s+", "/", s2)
+        s2 = re.sub(r"\s+", " ", s2)
+        return s2
+    norm = _normalize(text)
+    lines = [l.strip() for l in norm.splitlines() if l.strip()]
     joined = " \n ".join(lines)
 
     def find_first(patterns):
@@ -267,39 +277,43 @@ def extract_marksheet_fields(
                 return m.group(1).strip()
         return None
 
+    sep = r"[:\-–—]"
     name = find_first([
-        r"(?:Name(?: of the Candidate)?|Student Name|Candidate Name)\s*[:\-]\s*(.+?)\s*(?:\n|$)",
+        rf"(?:Student\s*name|Name(?: of the Candidate)?|Student Name|Candidate Name)\s*{sep}\s*(.+?)\s*(?:\n|$)",
     ])
     father_name = find_first([
         r"(?:Father(?:'s)? Name|Guardian Name)\s*[:\-]\s*(.+?)\s*(?:\n|$)",
     ])
     roll_number = find_first([
-        r"(?:Roll(?:\s*No\.?|\s*Number)?|Enrollment No|Enrolment No)\s*[:\-]\s*([A-Za-z0-9\-/]+)",
+        rf"(?:Roll(?:\s*No\.?|\s*Number)?|Roll number|Enrollment No|Enrolment No)\s*{sep}\s*([A-Za-z0-9\-/]+)",
     ])
     registration_number = find_first([
         r"(?:Registration No|Reg\.? No|Registration Number)\s*[:\-]\s*([A-Za-z0-9\-/]+)",
     ])
     dob = find_first([
-        r"(?:Date of Birth|DOB)\s*[:\-]\s*([0-3]?\d[\-/][0-1]?\d[\-/][12]\d{3})",
-        r"(?:Date of Birth|DOB)\s*[:\-]\s*([0-3]?\d\s+[A-Za-z]{3,9}\s+[12]\d{3})",
+        rf"(?:Date of Birth|DOB)\s*{sep}\s*([0-3]?\d[\-/][0-1]?\d[\-/][12]\d{3})",
+        rf"(?:Date of Birth|DOB)\s*{sep}\s*([0-3]?\d\s+[A-Za-z]{3,9}\s+[12]\d{3})",
     ])
     exam = find_first([
-        r"(?:Examination|Exam|Course|Programme|Program)\s*[:\-]\s*(.+?)\s*(?:\n|$)",
+        rf"(?:Examination|Exam|Course|Programme|Program)\s*{sep}\s*(.+?)\s*(?:\n|$)",
     ])
     year = find_first([
-        r"(?:Year of Passing|Passing Year|Session|Year)\s*[:\-]\s*([12]\d{3})",
+        rf"(?:Year(?: of Passing)?|Passing Year|Session|Year)\s*{sep}\s*([12]\d{3})",
     ])
     university = find_first([
-        r"(?:University|Board)\s*[:\-]\s*(.+?)\s*(?:\n|$)",
+        rf"(?:Board/University|University|Board)\s*{sep}\s*(.+?)\s*(?:\n|$)",
     ])
     college = find_first([
-        r"(?:College|Institute|School)\s*[:\-]\s*(.+?)\s*(?:\n|$)",
+        rf"(?:College|Institute|School)\s*{sep}\s*(.+?)\s*(?:\n|$)",
     ])
     percentage = find_first([
-        r"(?:Percentage|Marks Percentage)\s*[:\-]\s*([0-9]{1,3}(?:\.[0-9]+)?)%?",
+        rf"(?:Percentage(?:\s*/\s*CGPA)?|Marks Percentage)\s*{sep}\s*([0-9]{{1,3}}(?:\.[0-9]+)?)%?",
+        rf"(?:Percent)\s*{sep}\s*([0-9]{{1,3}}(?:\.[0-9]+)?)%?",
+        rf"(?:Percentage\s*/\s*CGPA)\s*{sep}\s*([0-9]{{1,3}}(?:\.[0-9]+)?)%?",
     ])
     cgpa = find_first([
-        r"(?:CGPA|SGPA)\s*[:\-]\s*([0-9](?:\.[0-9]+)?)",
+        rf"(?:CGPA|SGPA)\s*{sep}\s*([0-9](?:\.[0-9]+)?)",
+        rf"(?:CGPA|SGPA)\s*{sep}\s*([0-9](?:\.[0-9]+)?)(?:\s*/\s*10)?",
     ])
 
     subjects = []
@@ -322,7 +336,7 @@ def extract_marksheet_fields(
         "sgpa",
     )
     subj_pattern = re.compile(
-        r"^([A-Za-z][A-Za-z0-9 &./()\-]{2,})\s+([0-9]{1,3}(?:\.[0-9]+)?)(?:\s*/\s*[0-9]{1,3})?\s*(?:([A-Za-z]{1,3}))?$",
+        rf"^([A-Za-z][A-Za-z0-9 &./()\-]{{2,}})\s*(?:{sep}\s*)?([0-9]{{1,3}}(?:\.[0-9]+)?)(?:\s*/\s*([0-9]{{1,3}}))?\s*(?:([A-Za-z]{{1,3}}))?$",
         flags=re.IGNORECASE,
     )
     for line in lines:
@@ -336,8 +350,48 @@ def extract_marksheet_fields(
                 marks_val = float(m.group(2))
             except Exception:
                 marks_val = None
-            grade_val = (m.group(3) or "").strip() or None
-            subjects.append({"name": subj_name, "marks": marks_val, "grade": grade_val})
+            try:
+                max_val = float(m.group(3)) if m.group(3) else None
+            except Exception:
+                max_val = None
+            grade_val = (m.group(4) or "").strip() or None
+            subjects.append({"name": subj_name, "marks": marks_val, "max": max_val, "grade": grade_val})
+
+    total_marks = None
+    max_marks = None
+    m_total = re.search(rf"(?:Total\s*marks?|Aggregate|Marks\s*Obtained)\s*{sep}\s*([0-9]{{1,4}})(?:\s*(?:out\s*of|of|/)?\s*([0-9]{{1,4}}))", joined, flags=re.IGNORECASE)
+    if m_total:
+        try:
+            total_marks = float(m_total.group(1))
+            max_marks = float(m_total.group(2))
+        except Exception:
+            total_marks = None
+            max_marks = None
+    else:
+        sm = sum((s.get("marks") or 0) for s in subjects if isinstance(s.get("marks"), (int, float)))
+        sx = sum((s.get("max") or 0) for s in subjects if isinstance(s.get("max"), (int, float)))
+        total_marks = sm if sm > 0 else None
+        # If denominators missing, infer from typical maxima (e.g., 100 per subject)
+        if sx <= 0 and sm > 0 and len(subjects) > 0:
+            sx = 100.0 * len([1 for s in subjects if s.get("marks") is not None])
+        max_marks = sx if sx > 0 else None
+
+    calculated_percentage = None
+    if percentage:
+        try:
+            calculated_percentage = float(percentage)
+        except Exception:
+            calculated_percentage = None
+    elif cgpa:
+        try:
+            calculated_percentage = float(cgpa) * 9.5
+        except Exception:
+            calculated_percentage = None
+    elif total_marks and max_marks and max_marks > 0:
+        try:
+            calculated_percentage = (float(total_marks) / float(max_marks)) * 100.0
+        except Exception:
+            calculated_percentage = None
 
     result = {
         "name": name,
@@ -351,6 +405,19 @@ def extract_marksheet_fields(
         "college": college,
         "percentage": float(percentage) if percentage else None,
         "cgpa": float(cgpa) if cgpa else None,
+        "total_marks": total_marks,
+        "max_marks": max_marks,
+        "calculated_percentage": calculated_percentage,
         "subjects": subjects,
     }
+    subjects_map = {s.get("name"): {"marks": s.get("marks"), "max": s.get("max"), "grade": s.get("grade")} for s in subjects if s.get("name")}
+    total_outoff = f"{int(total_marks) if isinstance(total_marks, (int, float)) else total_marks}/{int(max_marks) if isinstance(max_marks, (int, float)) else max_marks}" if (total_marks is not None and max_marks is not None) else None
+    pref_val = result["percentage"] if result["percentage"] is not None else (result["cgpa"] if result["cgpa"] is not None else result["calculated_percentage"])
+    result.update({
+        "student_name": name,
+        "board_university": university,
+        "subjects_and_marks": subjects_map,
+        "total_marks_obtained_outoff": total_outoff,
+        "percentage_cgpa": pref_val,
+    })
     return result
