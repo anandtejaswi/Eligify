@@ -43,4 +43,8 @@ build/
 *.coverage
 coverage/
 
+# Secrets
+client_secret_*.json
+.env.local
+
 # Note: keep sample PDFs in repo for demo; do not ignore

@@ -8,3 +8,6 @@ flask-wtf
 WTForms
 email-validator
 werkzeug
+google-auth
+SQLAlchemy
+psycopg2-binary
