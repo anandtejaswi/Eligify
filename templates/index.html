@@ -29,10 +29,10 @@
         </div>
     </header>
 
-    <main class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-10">
+    <main class="max-w-6xl mx-auto grid grid-cols-1 {% if user %}lg:grid-cols-2{% endif %} gap-10 justify-items-center">
         
         <!-- Candidate Registration Form -->
-        <div class="bg-white p-6 md:p-8 rounded-xl card-shadow h-fit">
+        <div class="bg-white p-6 md:p-8 rounded-xl card-shadow h-fit max-w-xl mx-auto">
             <h2 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-3">1. Candidate Registration</h2>
             <form id="candidate-form" class="space-y-4">
                 
@@ -54,16 +54,39 @@
                     </select>
                 </div>
 
+                {% if user %}
                 <!-- Academic Details -->
                 <h3 class="text-xl font-semibold mt-6 pt-4 border-t">2. Academic Credentials (In Percentage/CGPA)</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <input type="number" id="p10" placeholder="10th Percentage" step="0.001" min="0" max="100" pattern="^\\d{1,3}(?:\\.\\d{1,3})?$" title="Up to 3 decimal places" class="p-3 border border-gray-300 rounded-lg focus:ring-gray-600 focus:border-gray-600" required>
-            <input type="number" id="p12" placeholder="12th Percentage" step="0.001" min="0" max="100" pattern="^\\d{1,3}(?:\\.\\d{1,3})?$" title="Up to 3 decimal places" class="p-3 border border-gray-300 rounded-lg focus:ring-gray-600 focus:border-gray-600" required>
-            <input type="number" id="ugCgpa" placeholder="UG CGPA (e.g., 7.5)" step="0.001" min="0" max="10" pattern="^\\d{1,2}(?:\\.\\d{1,3})?$" title="Up to 3 decimal places" class="p-3 border border-gray-300 rounded-lg focus:ring-gray-600 focus:border-gray-600" required>
+                <div class="space-y-4">
+                    <div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+                            <input type="number" id="p10" placeholder="10th Percentage" step="0.001" min="0" max="100" pattern="^\\d{1,3}(?:\\.\\d{1,3})?$" title="Up to 3 decimal places" class="p-3 border border-gray-300 rounded-lg focus:ring-gray-600 focus:border-gray-600" required>
+                            <input type="file" id="file10" accept="application/pdf" class="p-3 border border-gray-300 rounded-lg" />
+                            <button type="button" id="verify10" class="bg-gray-900 text-white font-bold py-2 px-4 rounded hover:bg-gray-700">Verify</button>
+                        </div>
+                        <div id="ind10" class="mt-2 text-sm"></div>
+                    </div>
+                    <div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+                            <input type="number" id="p12" placeholder="12th Percentage" step="0.001" min="0" max="100" pattern="^\\d{1,3}(?:\\.\\d{1,3})?$" title="Up to 3 decimal places" class="p-3 border border-gray-300 rounded-lg focus:ring-gray-600 focus:border-gray-600" required>
+                            <input type="file" id="file12" accept="application/pdf" class="p-3 border border-gray-300 rounded-lg" />
+                            <button type="button" id="verify12" class="bg-gray-900 text-white font-bold py-2 px-4 rounded hover:bg-gray-700">Verify</button>
+                        </div>
+                        <div id="ind12" class="mt-2 text-sm"></div>
+                    </div>
+                    <div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+                            <input type="number" id="ugCgpa" placeholder="UG CGPA (e.g., 7.5)" step="0.001" min="0" max="10" pattern="^\\d{1,2}(?:\\.\\d{1,3})?$" title="Up to 3 decimal places" class="p-3 border border-gray-300 rounded-lg focus:ring-gray-600 focus:border-gray-600" required>
+                            <input type="file" id="fileUG" accept="application/pdf" class="p-3 border border-gray-300 rounded-lg" />
+                            <button type="button" id="verifyUG" class="bg-gray-900 text-white font-bold py-2 px-4 rounded hover:bg-gray-700">Verify</button>
+                        </div>
+                        <div id="indUG" class="mt-2 text-sm"></div>
+                    </div>
                 </div>
+                {% endif %}
 
                 <div class="flex items-center gap-3 mt-6">
-                <button type="submit" class="flex-1 bg-gray-900 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition duration-200 shadow-lg shadow-gray-400">
+                <button id="submitEligibility" type="submit" class="flex-1 bg-gray-400 cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg shadow-gray-400" disabled>
                     Check Eligibility Now
                 </button>
                 {% if not user %}
@@ -81,6 +104,7 @@
         </div>
 
 
+        {% if user %}
         <!-- Eligibility Results Section -->
         <div class="bg-white p-6 md:p-8 rounded-xl card-shadow">
             <h2 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-3">3. Eligible Examinations</h2>
@@ -91,25 +115,9 @@
                 <!-- Results will be injected here -->
             </div>
         </div>
+        {% endif %}
         
-        <!-- Marksheet Scanner (MVP) -->
-        <div class="bg-white p-6 md:p-8 rounded-xl card-shadow h-fit">
-            <h2 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-3">4. Marksheet Scanner (MVP)</h2>
-            <div class="space-y-4">
-                <input type="file" id="marksheetFile" accept="application/pdf" class="p-3 border border-gray-300 rounded-lg w-full" />
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <select id="marksheetMethod" class="p-3 border border-gray-300 rounded-lg">
-                        <option value="auto">auto</option>
-                        <option value="text">text</option>
-                        <option value="ocr">ocr</option>
-                    </select>
-                    <input type="number" id="marksheetDpi" placeholder="DPI (e.g., 300)" min="100" max="600" class="p-3 border border-gray-300 rounded-lg" />
-                    <button id="scanBtn" class="bg-gray-900 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition duration-200">Scan Marksheet</button>
-                </div>
-            </div>
-            <div id="scanMessage" class="mt-4 p-3 rounded-lg hidden"></div>
-            <div id="scanResults" class="mt-4"></div>
-        </div>
+        
     </main>
 </div>
 <!-- Sign-in Modal -->
@@ -132,114 +140,7 @@
             if (res.ok) { window.APP_USER_SIGNED_IN = true; closeLoginModal(); window.location.assign('/'); }
         } catch(e) {}
     }
-    // -----------------------------------------------------------------
-    // SIMULATED DATABASE (Mock Data based on schema.sql and mock_data.sql)
-    // EXPANDED EXAM LIST (20 EXAMS)
-    // -----------------------------------------------------------------
-    let EXAMS_DB = [];
-    const MOCK_EXAM_DB = [
-        {
-            exam_id: 101, exam_name: 'JEE Main (Engineering)', conducting_body: 'NTA', exam_level: 'National', exam_mode: 'Online', website: 'jeemain.nta.nic.in', fee_gen_ews: 1000, total_duration_mins: 180,
-            min_age: 17, max_age: 25, min_10_percent: 60, min_12_percent: 75, min_ug_cgpa: 0.0,
-            subjects: ['Physics', 'Chemistry', 'Mathematics'], documents: ['Caste Certificate', 'Domicile', 'Photo', 'Signature', 'Aadhar'],
-        },
-        {
-            exam_id: 102, exam_name: 'NEET UG (Medical)', conducting_body: 'NTA', exam_level: 'National', exam_mode: 'Offline', website: 'neet.nta.nic.in', fee_gen_ews: 1500, total_duration_mins: 200,
-            min_age: 17, max_age: 99, min_10_percent: 50, min_12_percent: 60, min_ug_cgpa: 0.0,
-            subjects: ['Physics', 'Chemistry', 'Botany', 'Zoology'], documents: ['Caste Certificate', 'Domicile', 'Birth Certificate', 'Photo', 'Signature', 'Aadhar'],
-        },
-        {
-            exam_id: 103, exam_name: 'UPSC CSE (Civil Services)', conducting_body: 'UPSC', exam_level: 'National', exam_mode: 'Offline', website: 'upsc.gov.in', fee_gen_ews: 100, total_duration_mins: 180,
-            min_age: 21, max_age: 32, min_10_percent: 50, min_12_percent: 50, min_ug_cgpa: 6.0,
-            subjects: ['General Studies I', 'General Studies II (CSAT)'], documents: ['Caste Certificate', 'Photo', 'Signature', 'Aadhar', 'UG Degree'],
-        },
-        {
-            exam_id: 104, exam_name: 'GATE (Engineering PG)', conducting_body: 'IITs/IISc', exam_level: 'National', exam_mode: 'Online', website: 'gate.iitk.ac.in', fee_gen_ews: 1800, total_duration_mins: 180,
-            min_age: 20, max_age: 99, min_10_percent: 50, min_12_percent: 50, min_ug_cgpa: 6.5,
-            subjects: ['General Aptitude', 'Engineering Mathematics', 'Core Engineering Branch Subject'], documents: ['UG Degree/Marksheet', 'Photo', 'Signature', 'Aadhar'],
-        },
-        {
-            exam_id: 105, exam_name: 'CLAT (Law Entrance)', conducting_body: 'Consortium of NLUs', exam_level: 'National', exam_mode: 'Offline', website: 'consortiumofnlus.ac.in', fee_gen_ews: 4000, total_duration_mins: 120,
-            min_age: 17, max_age: 99, min_10_percent: 50, min_12_percent: 45, min_ug_cgpa: 0.0,
-            subjects: ['English Language', 'Current Affairs', 'Legal Reasoning', 'Logical Reasoning'], documents: ['12th Marksheet', 'Caste Certificate', 'Photo', 'Signature'],
-        },
-        // --- NEW EXAMS ADDED BELOW ---
-        {
-            exam_id: 106, exam_name: 'BITSAT (Engineering)', conducting_body: 'BITS Pilani', exam_level: 'National', exam_mode: 'Online', website: 'bitsadmission.com', fee_gen_ews: 3400, total_duration_mins: 180,
-            min_age: 17, max_age: 99, min_10_percent: 60, min_12_percent: 75, min_ug_cgpa: 0.0,
-            subjects: ['PCM/PCB', 'English Proficiency', 'Logical Reasoning'], documents: ['12th Marksheet', 'Photo', 'Signature'],
-        },
-        {
-            exam_id: 107, exam_name: 'UGEE (IIIT Hyderabad)', conducting_body: 'IIIT Hyderabad', exam_level: 'National', exam_mode: 'Online', website: 'iiit.ac.in/admissions/ug', fee_gen_ews: 2500, total_duration_mins: 180,
-            min_age: 17, max_age: 99, min_10_percent: 60, min_12_percent: 60, min_ug_cgpa: 0.0,
-            subjects: ['Subject Proficiency Test', 'Research Aptitude Test'], documents: ['12th Marksheet', 'Domicile', 'Photo'],
-        },
-        {
-            exam_id: 108, exam_name: 'MHT CET (Engineering/Pharmacy)', conducting_body: 'CET Cell Maharashtra', exam_level: 'State', exam_mode: 'Online', website: 'mahacet.org', fee_gen_ews: 800, total_duration_mins: 180,
-            min_age: 17, max_age: 99, min_10_percent: 50, min_12_percent: 45, min_ug_cgpa: 0.0,
-            subjects: ['Physics', 'Chemistry', 'Mathematics/Biology'], documents: ['Domicile', 'Caste Certificate', 'Photo'],
-        },
-        {
-            exam_id: 109, exam_name: 'CUET-UG (Common Univ. Entrance)', conducting_body: 'NTA', exam_level: 'National', exam_mode: 'Online', website: 'nta.ac.in/cuet', fee_gen_ews: 750, total_duration_mins: 180,
-            min_age: 17, max_age: 99, min_10_percent: 50, min_12_percent: 50, min_ug_cgpa: 0.0,
-            subjects: ['Language', 'Domain Subjects', 'General Test'], documents: ['12th Marksheet', 'Photo', 'Signature'],
-        },
-        {
-            exam_id: 110, exam_name: 'NDA (National Defence Academy)', conducting_body: 'UPSC', exam_level: 'National', exam_mode: 'Offline', website: 'upsc.gov.in/nda', fee_gen_ews: 100, total_duration_mins: 300,
-            min_age: 16, max_age: 19, min_10_percent: 50, min_12_percent: 60, min_ug_cgpa: 0.0,
-            subjects: ['Mathematics', 'General Ability Test (GAT)'], documents: ['Birth Certificate', 'Photo', 'Aadhar'],
-        },
-        {
-            exam_id: 111, exam_name: 'IAT (IISER Aptitude Test)', conducting_body: 'IISERs', exam_level: 'National', exam_mode: 'Online', website: 'iiseradmission.in', fee_gen_ews: 2000, total_duration_mins: 180,
-            min_age: 17, max_age: 99, min_10_percent: 60, min_12_percent: 60, min_ug_cgpa: 0.0,
-            subjects: ['Physics', 'Chemistry', 'Biology', 'Mathematics'], documents: ['12th Marksheet', 'Photo', 'Aadhar'],
-        },
-        {
-            exam_id: 112, exam_name: 'ISI Entrance (Maths/Stats)', conducting_body: 'Indian Statistical Institute', exam_level: 'National', exam_mode: 'Offline', website: 'isical.ac.in', fee_gen_ews: 1500, total_duration_mins: 120,
-            min_age: 17, max_age: 99, min_10_percent: 70, min_12_percent: 75, min_ug_cgpa: 0.0,
-            subjects: ['Mathematics', 'Statistics', 'English'], documents: ['12th Marksheet', 'Photo'],
-        },
-        {
-            exam_id: 113, exam_name: 'UCEED (Design Entrance)', conducting_body: 'IIT Bombay', exam_level: 'National', exam_mode: 'Online/Offline', website: 'uceed.iitb.ac.in', fee_gen_ews: 3500, total_duration_mins: 180,
-            min_age: 17, max_age: 99, min_10_percent: 50, min_12_percent: 50, min_ug_cgpa: 0.0,
-            subjects: ['Aptitude', 'Observation', 'Design Sketching'], documents: ['12th Marksheet', 'Photo', 'Signature'],
-        },
-        {
-            exam_id: 114, exam_name: 'AFCAT (Air Force Common Aptitude)', conducting_body: 'IAF', exam_level: 'National', exam_mode: 'Online', website: 'afcat.cdac.in', fee_gen_ews: 250, total_duration_mins: 120,
-            min_age: 20, max_age: 24, min_10_percent: 50, min_12_percent: 50, min_ug_cgpa: 6.0,
-            subjects: ['General Awareness', 'Verbal Ability', 'Numerical Ability', 'Reasoning'], documents: ['UG Degree', 'Photo', 'Aadhar'],
-        },
-        {
-            exam_id: 115, exam_name: 'CDS (Combined Defence Services)', conducting_body: 'UPSC', exam_level: 'National', exam_mode: 'Offline', website: 'upsc.gov.in/cds', fee_gen_ews: 200, total_duration_mins: 360,
-            min_age: 19, max_age: 24, min_10_percent: 50, min_12_percent: 50, min_ug_cgpa: 6.0,
-            subjects: ['English', 'General Knowledge', 'Elementary Mathematics'], documents: ['UG Degree', 'Photo', 'Aadhar'],
-        },
-        {
-            exam_id: 116, exam_name: 'NEET-PG (Medical PG)', conducting_body: 'NBE', exam_level: 'National', exam_mode: 'Online', website: 'nbe.edu.in', fee_gen_ews: 5000, total_duration_mins: 210,
-            min_age: 22, max_age: 99, min_10_percent: 50, min_12_percent: 50, min_ug_cgpa: 7.0,
-            subjects: ['Clinical Subjects', 'Pre/Para-Clinical Subjects'], documents: ['MBBS Degree', 'Caste Certificate', 'Photo'],
-        },
-        {
-            exam_id: 117, exam_name: 'CUET-PG (Common Univ. Entrance PG)', conducting_body: 'NTA', exam_level: 'National', exam_mode: 'Online', website: 'nta.ac.in/cuetpg', fee_gen_ews: 800, total_duration_mins: 105,
-            min_age: 20, max_age: 99, min_10_percent: 50, min_12_percent: 50, min_ug_cgpa: 5.5,
-            subjects: ['General Section', 'Domain Specific Knowledge'], documents: ['UG Degree/Marksheet', 'Photo', 'Signature'],
-        },
-        {
-            exam_id: 118, exam_name: 'SSC-CGL (Govt. Job)', conducting_body: 'SSC', exam_level: 'National', exam_mode: 'Online', website: 'ssc.nic.in', fee_gen_ews: 100, total_duration_mins: 120,
-            min_age: 18, max_age: 32, min_10_percent: 50, min_12_percent: 50, min_ug_cgpa: 5.0,
-            subjects: ['Quantitative Aptitude', 'General Intelligence', 'English Comprehension'], documents: ['UG Degree', 'Photo', 'Aadhar'],
-        },
-        {
-            exam_id: 119, exam_name: 'VITEEE (Engineering)', conducting_body: 'VIT', exam_level: 'University', exam_mode: 'Online', website: 'viteee.vit.ac.in', fee_gen_ews: 1350, total_duration_mins: 150,
-            min_age: 17, max_age: 99, min_10_percent: 60, min_12_percent: 60, min_ug_cgpa: 0.0,
-            subjects: ['PCM/PCB', 'English', 'Aptitude'], documents: ['12th Marksheet', 'Photo', 'Signature'],
-        },
-        {
-            exam_id: 120, exam_name: 'SRMJEE (Engineering)', conducting_body: 'SRM Institute', exam_level: 'University', exam_mode: 'Online', website: 'srmist.edu.in', fee_gen_ews: 1200, total_duration_mins: 150,
-            min_age: 17, max_age: 99, min_10_percent: 50, min_12_percent: 50, min_ug_cgpa: 0.0,
-            subjects: ['Physics', 'Chemistry', 'Mathematics/Biology'], documents: ['12th Marksheet', 'Photo'],
-        },
-    ];
+    let EXAMS_DB = {{ exams | tojson }};
 
     // -----------------------------------------------------------------
     // UTILITY FUNCTIONS
@@ -313,7 +214,7 @@
      * @returns {Array<object>} An array of eligible exam objects.
      */
     function checkEligibility(candidate) {
-        const source = (Array.isArray(EXAMS_DB) && EXAMS_DB.length) ? EXAMS_DB : MOCK_EXAM_DB;
+        const source = Array.isArray(EXAMS_DB) ? EXAMS_DB : [];
         const eligibleExams = source.filter(exam => {
             let isEligible = true;
 
@@ -517,7 +418,7 @@
     // -----------------------------------------------------------------
     // MARKSHEET SCANNER (MVP)
     // -----------------------------------------------------------------
-    document.getElementById('scanBtn').addEventListener('click', async () => {
+    document.getElementById('scanBtn')?.addEventListener('click', async () => {
         const fileInput = document.getElementById('marksheetFile');
         const msg = document.getElementById('scanMessage');
         const out = document.getElementById('scanResults');
@@ -607,6 +508,53 @@
             }
         } catch(e) {}
     })();
+
+    // Academic verification logic
+    const state = { v10:false, v12:false, vUG:false };
+    function updateProceed(){
+        const btn = document.getElementById('proceedBtn');
+        const msg = document.getElementById('verifyMsg');
+        const submitBtn = document.getElementById('submitEligibility');
+        const ok = state.v10 && state.v12 && state.vUG;
+        if (btn){
+            btn.disabled = !ok;
+            btn.className = ok ? 'bg-green-600 text-white font-bold py-3 px-4 rounded' : 'bg-gray-400 text-white font-bold py-3 px-4 rounded cursor-not-allowed';
+        }
+        if (msg){
+            msg.textContent = ok ? 'All verifications complete ✔ You can proceed.' : 'Upload and verify all three to enable proceed.';
+        }
+        if (submitBtn){
+            submitBtn.disabled = !ok;
+            submitBtn.className = ok ? 'flex-1 bg-gray-900 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition duration-200 shadow-lg shadow-gray-400' : 'flex-1 bg-gray-400 cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition duration  -200 shadow-lg shadow-gray-400';
+        }
+    }
+    async function verifyStage(stage, markElId, fileElId, indElId){
+        const ind = document.getElementById(indElId);
+        const markEl = document.getElementById(markElId);
+        const fileEl = document.getElementById(fileElId);
+        ind.className = 'mt-2 text-sm text-gray-700';
+        ind.textContent = 'Verifying...';
+        if (!fileEl.files.length){ ind.className='mt-2 text-sm text-red-700'; ind.textContent='Please upload a PDF.'; return; }
+        const f = fileEl.files[0];
+        if (f.type !== 'application/pdf'){ ind.className='mt-2 text-sm text-red-700'; ind.textContent='Only PDF files are allowed.'; return; }
+        const entered = markEl.value;
+        const fd = new FormData();
+        fd.append('file', f);
+        fd.append('entered', entered);
+        try{
+            const res = await fetch(`/api/verify-academic?stage=${encodeURIComponent(stage)}`, { method:'POST', body: fd, credentials: 'same-origin' });
+            const data = await res.json();
+            if (!res.ok){ ind.className='mt-2 text-sm text-red-700'; ind.textContent = data.error || 'Verification failed'; return; }
+            const match = !!data.verified;
+            ind.className = match ? 'mt-2 text-sm text-green-700' : 'mt-2 text-sm text-red-700';
+            ind.textContent = match ? `Match ✔ Entered ${data.entered} vs Extracted ${data.extracted}` : `Mismatch ✖ Entered ${data.entered} vs Extracted ${data.extracted ?? 'N/A'}`;
+            if (stage==='10') state.v10 = match; else if (stage==='12') state.v12 = match; else state.vUG = match;
+            updateProceed();
+        }catch(e){ ind.className='mt-2 text-sm text-red-700'; ind.textContent='Network error'; }
+    }
+    document.getElementById('verify10')?.addEventListener('click', () => verifyStage('10','p10','file10','ind10'));
+    document.getElementById('verify12')?.addEventListener('click', () => verifyStage('12','p12','file12','ind12'));
+    document.getElementById('verifyUG')?.addEventListener('click', () => verifyStage('UG','ugCgpa','fileUG','indUG'));
 </script>
 
 </body>

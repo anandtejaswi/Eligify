@@ -2,9 +2,9 @@
 from flask import Blueprint, request, jsonify
 from services.exam_repository import ExamRepository
 from services.db import SessionLocal
-from models.db_models import CandidateProfile, DocumentUpload, ParsedDocument
+from models.db_models import CandidateProfile, DocumentUpload, ParsedDocument, AcademicVerification
 import json
-from lib.pdf_parser import extract_text_from_pdf, extract_marksheet_fields
+from lib.pad_parser import extract_text_from_pdf, extract_marksheet_fields
 from middleware.security import (
     validate_file_upload, validate_dpi, validate_method,
     sanitize_input, rate_limit
@@ -171,3 +171,64 @@ def parse_marksheet_ep():
     except Exception as e:
         # Don't expose internal error details
         return jsonify({'error': 'An unexpected error occurred while processing the marksheet.'}), 500
+
+
+@api_bp.post('/verify-academic')
+@api_bp.post('/verify-academic/')
+@require_login
+@rate_limit(max_requests=30, window=60)
+def verify_academic():
+    stage = (request.args.get('stage') or '').upper().strip()
+    if stage not in ('10', '12', 'UG'):
+        return jsonify({'error': 'Invalid stage. Use 10, 12, or UG'}), 400
+    entered_raw = request.form.get('entered') or request.args.get('entered')
+    try:
+        entered_val = float(entered_raw)
+    except Exception:
+        return jsonify({'error': 'Invalid entered value'}), 400
+    f = request.files.get('file')
+    is_valid, error_msg = validate_file_upload(f)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+    method_param = request.args.get('method', 'auto')
+    is_valid, method, error_msg = validate_method(method_param)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+    dpi_param = request.args.get('dpi')
+    is_valid, dpi, error_msg = validate_dpi(dpi_param)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+    try:
+        fields = extract_marksheet_fields(f, method=method, dpi=dpi) or {}
+        # Prefer percentage for 10/12, CGPA for UG; fall back across if missing
+        extracted = None
+        if stage in ('10', '12'):
+            extracted = fields.get('percentage')
+            if extracted is None:
+                extracted = fields.get('calculated_percentage')
+            if extracted is None:
+                extracted = fields.get('cgpa')
+        else:
+            extracted = fields.get('cgpa')
+            if extracted is None:
+                extracted = fields.get('percentage')
+            if extracted is None:
+                extracted = fields.get('calculated_percentage')
+        try:
+            extracted_val = float(extracted) if extracted is not None else None
+        except Exception:
+            extracted_val = None
+        tolerance = 0.1
+        verified = int(extracted_val is not None and abs(extracted_val - entered_val) <= tolerance)
+        db = SessionLocal()
+        upload = DocumentUpload(user_sub=session['user']['sub'], doc_type=f"marksheet-{stage}", filename=f.filename, mime=(getattr(f, 'mimetype', None) or 'application/pdf'), stored_path=None)
+        db.add(upload)
+        db.flush()
+        db.add(ParsedDocument(upload_id=upload.id, parsed_json=json.dumps({'fields': fields, 'method': method, 'dpi': dpi})))
+        av = AcademicVerification(user_sub=session['user']['sub'], stage=stage, entered_value=entered_val, extracted_value=extracted_val, verified=verified, upload_id=upload.id, filename=f.filename, mime=(getattr(f, 'mimetype', None) or 'application/pdf'))
+        db.add(av)
+        db.commit()
+        db.close()
+        return jsonify({'stage': stage, 'entered': entered_val, 'extracted': extracted_val, 'verified': bool(verified), 'fields': fields})
+    except Exception:
+        return jsonify({'error': 'Failed to verify academic document'}), 500

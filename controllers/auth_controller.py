@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, current_app
+import os, glob, json
 from services.db import SessionLocal
 from models.db_models import User
 from google.oauth2 import id_token
@@ -9,6 +10,20 @@ auth_bp = Blueprint('auth', __name__)
 @auth_bp.get('/login')
 def login():
     client_id = current_app.config.get('GOOGLE_CLIENT_ID')
+    if not client_id:
+        try:
+            files = []
+            files.extend(glob.glob(os.path.join(os.path.dirname(current_app.root_path), 'client_secret_*.json')))
+            files.extend(glob.glob(os.path.join(current_app.root_path, 'client_secret_*.json')))
+            files.extend(glob.glob(os.path.join(os.getcwd(), 'client_secret_*.json')))
+            for p in files:
+                with open(p, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    client_id = (data.get('web') or {}).get('client_id')
+                    if client_id:
+                        break
+        except Exception:
+            client_id = None
     return render_template('login.html', google_client_id=client_id)
 
 @auth_bp.post('/auth/google')
