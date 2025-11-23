@@ -1,16 +1,56 @@
 """API controller for handling API endpoints."""
 from flask import Blueprint, request, jsonify
+from services.exam_repository import ExamRepository
+from services.db import SessionLocal
+from models.db_models import CandidateProfile, DocumentUpload, ParsedDocument
+import json
 from lib.pdf_parser import extract_text_from_pdf, extract_marksheet_fields
 from middleware.security import (
     validate_file_upload, validate_dpi, validate_method,
     sanitize_input, rate_limit
 )
+from functools import wraps
+from flask import session, jsonify
+
+def require_login(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get('user'):
+            return jsonify({'error': 'Authentication required'}), 401
+        return f(*args, **kwargs)
+    return wrapper
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 
+@api_bp.get('/exams')
+def get_exams():
+    exams = ExamRepository.get_all_exams()
+    return jsonify([e.to_dict() for e in exams])
+@api_bp.post('/candidate-profile')
+@require_login
+def save_candidate_profile():
+    data = request.json or {}
+    try:
+        first_name = str(data.get('first_name', '')).strip()
+        dob = str(data.get('dob', ''))
+        category = str(data.get('category', ''))
+        p10 = float(data.get('p10', 0))
+        p12 = float(data.get('p12', 0))
+        ug_cgpa = float(data.get('ug_cgpa', 0))
+    except Exception:
+        return jsonify({'error': 'Invalid payload'}), 400
+    db = SessionLocal()
+    profile = CandidateProfile(user_sub=session['user']['sub'], first_name=first_name, dob=dob, category=category, p10=p10, p12=p12, ug_cgpa=ug_cgpa)
+    db.add(profile)
+    db.commit()
+    pid = profile.id
+    db.close()
+    return jsonify({'ok': True, 'candidate_profile_id': pid})
+
 @api_bp.post('/parse-pdf')
-@rate_limit(max_requests=50, window=60)  # 50 requests per minute
+@require_login
+@rate_limit(max_requests=50, window=60)
 def parse_pdf_ep():
     """Parse PDF endpoint with security validation."""
     # Validate file upload
@@ -36,8 +76,15 @@ def parse_pdf_ep():
         text = extract_text_from_pdf(f, method=method, dpi=dpi)
         
         # Sanitize output to prevent XSS
-        text = sanitize_input(text, max_length=100000)  # Allow longer text for PDF content
-        
+        text = sanitize_input(text, max_length=100000)
+        db = SessionLocal()
+        doc_type = request.args.get('doc_type', 'unknown')
+        upload = DocumentUpload(user_sub=session['user']['sub'], doc_type=doc_type, filename=f.filename, mime=(getattr(f, 'mimetype', None) or 'application/pdf'), stored_path=None)
+        db.add(upload)
+        db.flush()
+        db.add(ParsedDocument(upload_id=upload.id, parsed_json=json.dumps({'text': text, 'method': method, 'dpi': dpi})))
+        db.commit()
+        db.close()
         return jsonify({
             'text': text,
             'method': method,
@@ -56,7 +103,8 @@ def parse_pdf_ep():
 
 
 @api_bp.post('/parse-marksheet')
-@rate_limit(max_requests=50, window=60)  # 50 requests per minute
+@require_login
+@rate_limit(max_requests=50, window=60)
 def parse_marksheet_ep():
     """Parse marksheet endpoint with security validation."""
     # Validate file upload
@@ -107,7 +155,14 @@ def parse_marksheet_ep():
                 else:
                     sanitized_fields[key] = value
             fields = sanitized_fields
-        
+        db = SessionLocal()
+        doc_type = request.args.get('doc_type', 'marksheet')
+        upload = DocumentUpload(user_sub=session['user']['sub'], doc_type=doc_type, filename=f.filename, mime=(getattr(f, 'mimetype', None) or 'application/pdf'), stored_path=None)
+        db.add(upload)
+        db.flush()
+        db.add(ParsedDocument(upload_id=upload.id, parsed_json=json.dumps({'fields': fields, 'method': method, 'dpi': dpi})))
+        db.commit()
+        db.close()
         return jsonify({
             'fields': fields,
             'method': method,

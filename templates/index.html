@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ELIGIFY - Exam Eligibility Checker</title>
-    <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <!-- Custom Styles -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
@@ -13,9 +13,20 @@
 <body>
 
 <div class="min-h-screen bg-gray-50 p-4 md:p-10">
-    <header class="text-center mb-10">
-        <h1 class="text-5xl font-extrabold text-gray-900">ELIGIFY</h1>
-        <p class="text-xl text-gray-600 mt-2">Find the exams you are eligible for!</p>
+    <header class="mb-10">
+        <div class="flex items-center justify-between">
+            <div class="text-center w-full">
+                <h1 class="text-5xl font-extrabold text-gray-900">ELIGIFY</h1>
+                <p class="text-xl text-gray-600 mt-2">Find the exams you are eligible for!</p>
+            </div>
+            {% if user %}
+            <div class="absolute right-10 top-6 flex items-center gap-3">
+                {% if user.picture %}<img src="{{ user.picture }}" alt="" class="w-10 h-10 rounded-full border" />{% endif %}
+                <div class="text-sm text-gray-700">{{ user.name or user.email }}</div>
+                <a href="/logout" class="ml-2 text-sm text-blue-600">Logout</a>
+            </div>
+            {% endif %}
+        </div>
     </header>
 
     <main class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-10">
@@ -27,12 +38,12 @@
                 
                 <!-- Personal Details -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <input type="text" id="firstName" placeholder="First Name" class="p-3 border border-gray-300 rounded-lg focus:ring-gray-600 focus:border-gray-600" required>
+                    <input type="text" id="fullName" placeholder="Full Name" value="{{ user.name if user and user.name else '' }}" class="p-3 border border-gray-300 rounded-lg focus:ring-gray-600 focus:border-gray-600" required>
                     <input type="date" id="dob" class="p-3 border border-gray-300 rounded-lg focus:ring-gray-600 focus:border-gray-600" required>
                 </div>
                 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <input type="email" id="email" placeholder="Email (Unique)" class="p-3 border border-gray-300 rounded-lg focus:ring-gray-600 focus:border-gray-600" required>
+                    <input type="email" id="email" placeholder="Email (Unique)" value="{{ user.email if user and user.email else '' }}" class="p-3 border border-gray-300 rounded-lg focus:ring-gray-600 focus:border-gray-600" {% if user and user.email %}readonly{% endif %} required>
                     <select id="category" class="p-3 border border-gray-300 rounded-lg focus:ring-gray-600 focus:border-gray-600" required>
                         <option value="">Select Category</option>
                         <option value="GEN">General</option>
@@ -51,9 +62,20 @@
             <input type="number" id="ugCgpa" placeholder="UG CGPA (e.g., 7.5)" step="0.001" min="0" max="10" pattern="^\\d{1,2}(?:\\.\\d{1,3})?$" title="Up to 3 decimal places" class="p-3 border border-gray-300 rounded-lg focus:ring-gray-600 focus:border-gray-600" required>
                 </div>
 
-                <button type="submit" class="w-full bg-gray-900 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition duration-200 mt-6 shadow-lg shadow-gray-400">
+                <div class="flex items-center gap-3 mt-6">
+                <button type="submit" class="flex-1 bg-gray-900 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition duration-200 shadow-lg shadow-gray-400">
                     Check Eligibility Now
                 </button>
+                {% if not user %}
+                <div id="g_id_onload"
+                     data-client_id="{{ google_client_id }}"
+                     data-context="signin"
+                     data-callback="onGoogleSignIn"
+                     data-auto_select="false"
+                     data-ux_mode="popup"></div>
+                <div class="g_id_signin" data-type="standard" data-shape="rect" data-theme="filled_blue" data-text="signin_with" data-size="large" data-logo_alignment="left"></div>
+                {% endif %}
+                </div>
             </form>
             <div id="form-message" class="mt-4 p-3 rounded-lg text-center hidden"></div>
         </div>
@@ -90,12 +112,31 @@
         </div>
     </main>
 </div>
+<!-- Sign-in Modal -->
+<div id="login-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center">
+    <div class="bg-white rounded-lg p-6 w-full max-w-md">
+        <h3 class="text-xl font-bold mb-3">Sign in required</h3>
+        <p class="text-gray-700 mb-4">Please sign in with Google to view eligibility results.</p>
+        <div class="flex justify-center mb-4">
+            <div class="g_id_signin" data-type="standard" data-shape="rect" data-theme="filled_blue" data-text="signin_with" data-size="large" data-logo_alignment="left"></div>
+        </div>
+        <button id="close-login-modal" class="w-full bg-gray-900 text-white py-2 rounded">Close</button>
+    </div>
+</div>
 
 <script>
+    window.APP_USER_SIGNED_IN = {{ 'true' if user else 'false' }};
+    async function onGoogleSignIn(response){
+        try {
+            const res = await fetch('/auth/google', { method:'POST', headers:{'Content-Type':'application/json'}, credentials: 'same-origin', body: JSON.stringify({ credential: response.credential }) });
+            if (res.ok) { window.APP_USER_SIGNED_IN = true; closeLoginModal(); window.location.assign('/'); }
+        } catch(e) {}
+    }
     // -----------------------------------------------------------------
     // SIMULATED DATABASE (Mock Data based on schema.sql and mock_data.sql)
     // EXPANDED EXAM LIST (20 EXAMS)
     // -----------------------------------------------------------------
+    let EXAMS_DB = [];
     const MOCK_EXAM_DB = [
         {
             exam_id: 101, exam_name: 'JEE Main (Engineering)', conducting_body: 'NTA', exam_level: 'National', exam_mode: 'Online', website: 'jeemain.nta.nic.in', fee_gen_ews: 1000, total_duration_mins: 180,
@@ -272,7 +313,8 @@
      * @returns {Array<object>} An array of eligible exam objects.
      */
     function checkEligibility(candidate) {
-        const eligibleExams = MOCK_EXAM_DB.filter(exam => {
+        const source = (Array.isArray(EXAMS_DB) && EXAMS_DB.length) ? EXAMS_DB : MOCK_EXAM_DB;
+        const eligibleExams = source.filter(exam => {
             let isEligible = true;
 
             // 1. Age Check (Mandatory)
@@ -304,7 +346,7 @@
     // EVENT HANDLER
     // -----------------------------------------------------------------
 
-    const firstNameInput = document.getElementById('firstName');
+    const firstNameInput = document.getElementById('fullName');
     const emailInput = document.getElementById('email');
 
     /**
@@ -369,7 +411,22 @@
         });
     });
 
-    document.getElementById('candidate-form').addEventListener('submit', function(e) {
+    const loginModal = document.getElementById('login-modal');
+    function openLoginModal(){
+        loginModal.classList.remove('hidden');
+        loginModal.classList.add('flex');
+        document.body.style.overflow = 'hidden';
+    }
+    function closeLoginModal(){
+        loginModal.classList.add('hidden');
+        loginModal.classList.remove('flex');
+        document.body.style.overflow = '';
+    }
+    document.getElementById('close-login-modal').addEventListener('click', closeLoginModal);
+    loginModal.addEventListener('click', function(e){ if (e.target === loginModal) closeLoginModal(); });
+    window.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeLoginModal(); });
+
+    document.getElementById('candidate-form').addEventListener('submit', async function(e) {
         e.preventDefault();
 
         const formMessage = document.getElementById('form-message');
@@ -414,7 +471,7 @@
         }
 
         const candidateProfile = {
-            firstName: sanitizedFirstName,
+            fullName: sanitizedFirstName,
             dob: dobInput,
             age: calculateAge(dobInput),
             email: sanitizedEmail,
@@ -423,6 +480,11 @@
             p12: parseFloat(p12Raw),
             ugCgpa: parseFloat(ugRaw),
         };
+        const signedIn = !!window.APP_USER_SIGNED_IN;
+        if (!signedIn) { openLoginModal(); return; }
+        try {
+            await fetch('/api/candidate-profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ first_name: candidateProfile.fullName, dob: candidateProfile.dob, category: candidateProfile.category, p10: candidateProfile.p10, p12: candidateProfile.p12, ug_cgpa: candidateProfile.ugCgpa }) });
+        } catch (err) {}
 
         // 2. Perform Eligibility Check
         const eligibleExams = checkEligibility(candidateProfile);
@@ -537,6 +599,14 @@
         }
     });
 
+    (async function(){
+        try {
+            const r = await fetch('/api/exams');
+            if (r.ok) {
+                EXAMS_DB = await r.json();
+            }
+        } catch(e) {}
+    })();
 </script>
 
 </body>

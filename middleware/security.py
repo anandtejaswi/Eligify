@@ -21,13 +21,17 @@ def setup_security_headers(response):
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
+        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://accounts.google.com; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
-        "img-src 'self' data:; "
-        "connect-src 'self';"
+        "img-src 'self' data: https://lh3.googleusercontent.com; "
+        "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com; "
+        "frame-src https://accounts.google.com;"
     )
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
     return response
 
 
