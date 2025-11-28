@@ -18,8 +18,17 @@ ELIGIFY is a Flask web application that helps candidates find exams they are eli
 1. Create a virtual environment: `python -m venv .venv`
 2. Upgrade pip: `.\.venv\Scripts\python.exe -m pip install --upgrade pip`
 3. Install dependencies: `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`
-4. Run the server: `.\.venv\Scripts\python.exe app.py`
+4. Run the server: `.\\.venv\\Scripts\\python.exe app.py`
 5. Open `http://127.0.0.1:3000/` in a browser.
+
+## Upload Guidelines
+- Upload only Digilocker-verified marksheets or PDFs with selectable text.
+- Avoid scanned photos or images; OCR is best-effort and may fail or be rejected.
+- Allowed file types: `pdf`, `png`, `jpg`, `jpeg` (images are discouraged for reliability).
+- Max file size: 10MB (`middleware/security.py:12`); oversized files are rejected with `413` (`app.py:77`).
+- Do not upload password-protected or corrupted PDFs.
+- If the document shows selectable text in a PDF viewer, prefer `method=text` for highest accuracy.
+- If you must use an image, ensure good lighting, straight alignment, readable text, and at least `300 DPI`.
 
 ## Configuration
 Environment variables loaded from the process and optionally `.env.local` in the repo root (`app.py`).
@@ -68,6 +77,25 @@ Auth routes:
 - Strict file validation: type, size, filename (`middleware/security.py:99`).
 - Input sanitization to prevent XSS (`middleware/security.py:38`).
 - Simple in-memory rate limiting (`middleware/security.py:172`).
+
+## Eligibility Logic
+- Server-side exam data is provided by `services/exam_repository.py` and `models/exam.py`.
+- Client-side eligibility checks complement server logic in `templates/index.html` and `static/js`.
+- Saved results and snapshots use SQLAlchemy models (`models/db_models.py`).
+
+## Troubleshooting
+- Missing OCR prerequisites:
+  - If `parse-pdf` returns messages like "OCR prerequisites missing" or "Could not rasterize", install and configure Tesseract and Poppler (`lib/pdf_parser.py:106`, `lib/pdf_parser.py:32`).
+- Google Sign-In issues:
+  - Ensure `GOOGLE_CLIENT_ID` is set or a valid `client_secret_*.json` exists where the app can find it (`app.py:39`, `controllers/web_controller.py:15`, `controllers/auth_controller.py:12`).
+- Database:
+  - Default SQLite file `eligify.db` is created automatically (`services/db.py:10`). To use Postgres, set `DATABASE_URL` and install `psycopg2-binary`.
+- File rejections:
+  - Check allowed types and size limits (`middleware/security.py:11`, `middleware/security.py:121`).
+
+## Use Cases
+- Students check eligibility for entrance exams and estimate qualification likelihood.
+- Users verify that entered percentages or CGPA match official marksheet values via document parsing (`controllers/api_controller.py:178`).
 
 ## Project Structure
 ```
