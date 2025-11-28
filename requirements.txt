@@ -11,3 +11,4 @@ werkzeug
 google-auth
 SQLAlchemy
 psycopg2-binary
+requests

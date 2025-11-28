@@ -59,7 +59,11 @@
                 <h3 class="text-xl font-semibold mt-6 pt-4 border-t">2. Academic Credentials (In Percentage/CGPA)</h3>
                 <div class="space-y-4">
                     <div>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+                        <div class="flex items-center gap-2 mb-2">
+                            <input type="checkbox" id="na10" class="w-4 h-4 text-gray-600 border-gray-300 rounded focus:ring-gray-500">
+                            <label for="na10" class="text-sm text-gray-700">NA (skip verification) - Not applicable</label>
+                        </div>
+                        <div id="cred10-container" class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
                             <input type="number" id="p10" placeholder="10th Percentage" step="0.001" min="0" max="100" pattern="^\\d{1,3}(?:\\.\\d{1,3})?$" title="Up to 3 decimal places" class="p-3 border border-gray-300 rounded-lg focus:ring-gray-600 focus:border-gray-600" required>
                             <input type="file" id="file10" accept="application/pdf" class="p-3 border border-gray-300 rounded-lg" />
                             <button type="button" id="verify10" class="bg-gray-900 text-white font-bold py-2 px-4 rounded hover:bg-gray-700">Verify</button>
@@ -67,7 +71,11 @@
                         <div id="ind10" class="mt-2 text-sm"></div>
                     </div>
                     <div>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+                        <div class="flex items-center gap-2 mb-2">
+                            <input type="checkbox" id="na12" class="w-4 h-4 text-gray-600 border-gray-300 rounded focus:ring-gray-500">
+                            <label for="na12" class="text-sm text-gray-700">NA (skip verification) - Not applicable</label>
+                        </div>
+                        <div id="cred12-container" class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
                             <input type="number" id="p12" placeholder="12th Percentage" step="0.001" min="0" max="100" pattern="^\\d{1,3}(?:\\.\\d{1,3})?$" title="Up to 3 decimal places" class="p-3 border border-gray-300 rounded-lg focus:ring-gray-600 focus:border-gray-600" required>
                             <input type="file" id="file12" accept="application/pdf" class="p-3 border border-gray-300 rounded-lg" />
                             <button type="button" id="verify12" class="bg-gray-900 text-white font-bold py-2 px-4 rounded hover:bg-gray-700">Verify</button>
@@ -75,7 +83,11 @@
                         <div id="ind12" class="mt-2 text-sm"></div>
                     </div>
                     <div>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+                        <div class="flex items-center gap-2 mb-2">
+                            <input type="checkbox" id="naUG" class="w-4 h-4 text-gray-600 border-gray-300 rounded focus:ring-gray-500">
+                            <label for="naUG" class="text-sm text-gray-700">NA (skip verification) - Not applicable</label>
+                        </div>
+                        <div id="credUG-container" class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
                             <input type="number" id="ugCgpa" placeholder="UG CGPA (e.g., 7.5)" step="0.001" min="0" max="10" pattern="^\\d{1,2}(?:\\.\\d{1,3})?$" title="Up to 3 decimal places" class="p-3 border border-gray-300 rounded-lg focus:ring-gray-600 focus:border-gray-600" required>
                             <input type="file" id="fileUG" accept="application/pdf" class="p-3 border border-gray-300 rounded-lg" />
                             <button type="button" id="verifyUG" class="bg-gray-900 text-white font-bold py-2 px-4 rounded hover:bg-gray-700">Verify</button>
@@ -224,15 +236,23 @@
                 isEligible = false;
             }
 
-            // 2. Academic Checks
-            if (candidate.p10 < exam.min_10_percent) {
-                isEligible = false;
+            // 2. Academic Checks - Skip if NA
+            if (candidate.p10 !== null && candidate.p10 !== undefined && !isNaN(candidate.p10)) {
+                if (candidate.p10 < exam.min_10_percent) {
+                    isEligible = false;
+                }
             }
-            if (candidate.p12 < exam.min_12_percent) {
-                isEligible = false;
+            
+            if (candidate.p12 !== null && candidate.p12 !== undefined && !isNaN(candidate.p12)) {
+                if (candidate.p12 < exam.min_12_percent) {
+                    isEligible = false;
+                }
             }
-            if (candidate.ugCgpa < exam.min_ug_cgpa) {
-                isEligible = false;
+            
+            if (candidate.ugCgpa !== null && candidate.ugCgpa !== undefined && !isNaN(candidate.ugCgpa)) {
+                if (candidate.ugCgpa < exam.min_ug_cgpa) {
+                    isEligible = false;
+                }
             }
 
             // In a real application, category, qualification, etc., would also be checked here.
@@ -344,13 +364,45 @@
         
         // 1. Collect and process candidate data
         const dobInput = document.getElementById('dob').value;
-        const p10Raw = document.getElementById('p10').value;
-        const p12Raw = document.getElementById('p12').value;
-        const ugRaw = document.getElementById('ugCgpa').value;
+        const na10 = document.getElementById('na10')?.checked || false;
+        const na12 = document.getElementById('na12')?.checked || false;
+        const naUG = document.getElementById('naUG')?.checked || false;
+        
+        // Validation: 10th cannot be NA
+        if (na10) {
+            formMessage.textContent = '10th credential cannot be marked as NA. It is mandatory.';
+            formMessage.className = 'mt-4 p-3 rounded-lg text-red-700 bg-red-100 block border border-red-300';
+            return;
+        }
+        
+        // Validation: If 12th is NA, 10th must be filled
+        if (na12) {
+            const p10Raw = document.getElementById('p10').value;
+            if (!p10Raw || p10Raw.trim() === '') {
+                formMessage.textContent = 'If 12th is marked as NA, 10th credential becomes mandatory.';
+                formMessage.className = 'mt-4 p-3 rounded-lg text-red-700 bg-red-100 block border border-red-300';
+                document.getElementById('p10').focus();
+                return;
+            }
+        }
+        
+        const p10Raw = na10 ? '' : document.getElementById('p10').value;
+        const p12Raw = na12 ? '' : document.getElementById('p12').value;
+        const ugRaw = naUG ? '' : document.getElementById('ugCgpa').value;
 
-        // Enforce max 3 decimal places for marks inputs
-        if (hasTooManyDecimals(p10Raw) || hasTooManyDecimals(p12Raw) || hasTooManyDecimals(ugRaw)) {
-            formMessage.textContent = 'Please enter values with at most 3 decimal places for percentages and CGPA.';
+        // Enforce max 3 decimal places for marks inputs (only if not NA)
+        if (!na10 && hasTooManyDecimals(p10Raw)) {
+            formMessage.textContent = 'Please enter values with at most 3 decimal places for 10th percentage.';
+            formMessage.className = 'mt-4 p-3 rounded-lg text-red-700 bg-red-100 block border border-red-300';
+            return;
+        }
+        if (!na12 && hasTooManyDecimals(p12Raw)) {
+            formMessage.textContent = 'Please enter values with at most 3 decimal places for 12th percentage.';
+            formMessage.className = 'mt-4 p-3 rounded-lg text-red-700 bg-red-100 block border border-red-300';
+            return;
+        }
+        if (!naUG && hasTooManyDecimals(ugRaw)) {
+            formMessage.textContent = 'Please enter values with at most 3 decimal places for UG CGPA.';
             formMessage.className = 'mt-4 p-3 rounded-lg text-red-700 bg-red-100 block border border-red-300';
             return;
         }
@@ -377,14 +429,23 @@
             age: calculateAge(dobInput),
             email: sanitizedEmail,
             category: document.getElementById('category').value,
-            p10: parseFloat(p10Raw),
-            p12: parseFloat(p12Raw),
-            ugCgpa: parseFloat(ugRaw),
+            p10: na10 ? null : (p10Raw ? parseFloat(p10Raw) : null),
+            p12: na12 ? null : (p12Raw ? parseFloat(p12Raw) : null),
+            ugCgpa: naUG ? null : (ugRaw ? parseFloat(ugRaw) : null),
         };
         const signedIn = !!window.APP_USER_SIGNED_IN;
         if (!signedIn) { openLoginModal(); return; }
         try {
-            await fetch('/api/candidate-profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ first_name: candidateProfile.fullName, dob: candidateProfile.dob, category: candidateProfile.category, p10: candidateProfile.p10, p12: candidateProfile.p12, ug_cgpa: candidateProfile.ugCgpa }) });
+            const apiPayload = {
+                first_name: candidateProfile.fullName,
+                dob: candidateProfile.dob,
+                category: candidateProfile.category
+            };
+            // Only include credentials that are not NA
+            if (candidateProfile.p10 !== null) apiPayload.p10 = candidateProfile.p10;
+            if (candidateProfile.p12 !== null) apiPayload.p12 = candidateProfile.p12;
+            if (candidateProfile.ugCgpa !== null) apiPayload.ug_cgpa = candidateProfile.ugCgpa;
+            await fetch('/api/candidate-profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(apiPayload) });
         } catch (err) {}
 
         // 2. Perform Eligibility Check
@@ -404,9 +465,15 @@
             formMessage.textContent = `Sorry, ${candidateProfile.firstName}. No exams matched your criteria in our database.`;
             formMessage.className = 'mt-4 p-3 rounded-lg text-gray-700 bg-gray-100 block border border-gray-300';
             
+            const credsDisplay = [];
+            if (candidateProfile.p10 !== null) credsDisplay.push(`10th% (${candidateProfile.p10})`);
+            if (candidateProfile.p12 !== null) credsDisplay.push(`12th% (${candidateProfile.p12})`);
+            if (candidateProfile.ugCgpa !== null) credsDisplay.push(`UG CGPA (${candidateProfile.ugCgpa})`);
+            const credsText = credsDisplay.length > 0 ? credsDisplay.join(', ') : 'No credentials provided';
+            
             resultsContainer.innerHTML = `
                 <p class="text-center text-gray-500 p-10 bg-gray-50 rounded-lg border border-gray-200">
-                    No exams found matching the criteria: Age (${candidateProfile.age}), 10th% (${candidateProfile.p10}), 12th% (${candidateProfile.p12}), UG CGPA (${candidateProfile.ugCgpa}). Try adjusting your profile data.
+                    No exams found matching the criteria: Age (${candidateProfile.age}), ${credsText}. Try adjusting your profile data.
                 </p>
             `;
         }
@@ -510,28 +577,112 @@
     })();
 
     // Academic verification logic
-    const state = { v10:false, v12:false, vUG:false };
+    const state = { v10:false, v12:false, vUG:false, na10:false, na12:false, naUG:false };
+    
+    // Handle NA checkbox changes
+    function handleNAChange(stage, isNA) {
+        const markEl = document.getElementById(stage === '10' ? 'p10' : stage === '12' ? 'p12' : 'ugCgpa');
+        const fileEl = document.getElementById(stage === '10' ? 'file10' : stage === '12' ? 'file12' : 'fileUG');
+        const verifyBtn = document.getElementById(stage === '10' ? 'verify10' : stage === '12' ? 'verify12' : 'verifyUG');
+        const indEl = document.getElementById(stage === '10' ? 'ind10' : stage === '12' ? 'ind12' : 'indUG');
+        const containerEl = document.getElementById(stage === '10' ? 'cred10-container' : stage === '12' ? 'cred12-container' : 'credUG-container');
+        
+        if (isNA) {
+            // Disable and hide fields
+            markEl.disabled = true;
+            markEl.removeAttribute('required');
+            markEl.value = '';
+            fileEl.disabled = true;
+            verifyBtn.disabled = true;
+            containerEl.style.opacity = '0.5';
+            containerEl.style.pointerEvents = 'none';
+            indEl.textContent = 'NA selected; skipping verification.';
+            indEl.className = 'mt-2 text-sm text-gray-600';
+            
+            // Set verification state to true (skip verification)
+            if (stage === '10') state.v10 = true;
+            else if (stage === '12') state.v12 = true;
+            else state.vUG = true;
+        } else {
+            // Enable and show fields
+            markEl.disabled = false;
+            // Set required attribute based on stage
+            if (stage === '10') {
+                markEl.setAttribute('required', ''); // 10th is always required
+            } else if (stage === '12') {
+                markEl.setAttribute('required', ''); // 12th is required if not NA
+            } else if (stage === 'UG') {
+                markEl.setAttribute('required', ''); // UG is required if not NA
+            }
+            fileEl.disabled = false;
+            verifyBtn.disabled = false;
+            containerEl.style.opacity = '1';
+            containerEl.style.pointerEvents = 'auto';
+            indEl.textContent = '';
+            indEl.className = 'mt-2 text-sm';
+            
+            // Reset verification state
+            if (stage === '10') state.v10 = false;
+            else if (stage === '12') state.v12 = false;
+            else state.vUG = false;
+        }
+        
+        // Special handling: if 12th is NA, ensure 10th is mandatory (it already is, but this reinforces it)
+        if (stage === '12' && isNA) {
+            const p10El = document.getElementById('p10');
+            p10El.setAttribute('required', '');
+        }
+        
+        // Prevent 10th from being NA
+        if (stage === '10' && isNA) {
+            const na10Checkbox = document.getElementById('na10');
+            na10Checkbox.checked = false;
+            alert('10th credential cannot be marked as NA. It is mandatory.');
+            return;
+        }
+        
+        updateProceed();
+    }
+    
     function updateProceed(){
         const btn = document.getElementById('proceedBtn');
         const msg = document.getElementById('verifyMsg');
         const submitBtn = document.getElementById('submitEligibility');
-        const ok = state.v10 && state.v12 && state.vUG;
+        
+        // Check which credentials need verification
+        const needsV10 = !state.na10;
+        const needsV12 = !state.na12;
+        const needsVUG = !state.naUG;
+        
+        // All required verifications must be complete
+        const ok = (!needsV10 || state.v10) && (!needsV12 || state.v12) && (!needsVUG || state.vUG);
+        
         if (btn){
             btn.disabled = !ok;
             btn.className = ok ? 'bg-green-600 text-white font-bold py-3 px-4 rounded' : 'bg-gray-400 text-white font-bold py-3 px-4 rounded cursor-not-allowed';
         }
         if (msg){
-            msg.textContent = ok ? 'All verifications complete ✔ You can proceed.' : 'Upload and verify all three to enable proceed.';
+            const requiredCreds = [];
+            if (needsV10) requiredCreds.push('10th');
+            if (needsV12) requiredCreds.push('12th');
+            if (needsVUG) requiredCreds.push('UG');
+            msg.textContent = ok ? 'All verifications complete ✔ You can proceed.' : `Upload and verify ${requiredCreds.join(', ')} to enable proceed.`;
         }
         if (submitBtn){
             submitBtn.disabled = !ok;
-            submitBtn.className = ok ? 'flex-1 bg-gray-900 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition duration-200 shadow-lg shadow-gray-400' : 'flex-1 bg-gray-400 cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition duration  -200 shadow-lg shadow-gray-400';
+            submitBtn.className = ok ? 'flex-1 bg-gray-900 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition duration-200 shadow-lg shadow-gray-400' : 'flex-1 bg-gray-400 cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg shadow-gray-400';
         }
     }
     async function verifyStage(stage, markElId, fileElId, indElId){
         const ind = document.getElementById(indElId);
         const markEl = document.getElementById(markElId);
         const fileEl = document.getElementById(fileElId);
+        
+        // Skip verification if NA is selected
+        if ((stage === '10' && state.na10) || (stage === '12' && state.na12) || (stage === 'UG' && state.naUG)) {
+            return;
+        }
+        
         ind.className = 'mt-2 text-sm text-gray-700';
         ind.textContent = 'Verifying...';
         if (!fileEl.files.length){ ind.className='mt-2 text-sm text-red-700'; ind.textContent='Please upload a PDF.'; return; }
@@ -552,6 +703,21 @@
             updateProceed();
         }catch(e){ ind.className='mt-2 text-sm text-red-700'; ind.textContent='Network error'; }
     }
+    
+    // Add event listeners for NA checkboxes
+    document.getElementById('na10')?.addEventListener('change', function(e) {
+        state.na10 = e.target.checked;
+        handleNAChange('10', e.target.checked);
+    });
+    document.getElementById('na12')?.addEventListener('change', function(e) {
+        state.na12 = e.target.checked;
+        handleNAChange('12', e.target.checked);
+    });
+    document.getElementById('naUG')?.addEventListener('change', function(e) {
+        state.naUG = e.target.checked;
+        handleNAChange('UG', e.target.checked);
+    });
+    
     document.getElementById('verify10')?.addEventListener('click', () => verifyStage('10','p10','file10','ind10'));
     document.getElementById('verify12')?.addEventListener('click', () => verifyStage('12','p12','file12','ind12'));
     document.getElementById('verifyUG')?.addEventListener('click', () => verifyStage('UG','ugCgpa','fileUG','indUG'));

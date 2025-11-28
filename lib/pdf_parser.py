@@ -327,9 +327,129 @@ def _parse_marksheet_text(text: str) -> dict:
         rf"(?:Percent)\s*{sep}\s*([0-9]{{1,3}}(?:\.[0-9]+)?)%?",
         rf"(?:Percentage\s*/\s*CGPA)\s*{sep}\s*([0-9]{{1,3}}(?:\.[0-9]+)?)%?",
     ])
-    cgpa = find_first([
+    
+    # Try to extract CGPA from table format (e.g., SEM | TTCR | TTCP | SGPA | CGPA | RESULT)
+    def extract_cgpa_from_table(lines_list):
+        """Extract CGPA from table structures with CGPA column."""
+        cgpa_values = []
+        header_found = False
+        cgpa_col_index = None
+        seen_cgpa = set()  # Track unique CGPA values to avoid duplicates
+        
+        for i, line in enumerate(lines_list):
+            # Normalize line: split by common table separators (|, tabs, multiple spaces)
+            # Try pipe separator first, then fall back to multiple spaces
+            if '|' in line:
+                parts = [p.strip() for p in line.split('|')]
+            else:
+                parts = re.split(r'\s{2,}|\t+', line.strip())
+                parts = [p.strip() for p in parts if p.strip()]
+            
+            if not parts:
+                continue
+            
+            # Check if this line contains CGPA header
+            line_lower = ' '.join(parts).lower()
+            if 'cgpa' in line_lower and not header_found:
+                # Find CGPA column index (look for exact "CGPA" match, not "SGPA")
+                for idx, part in enumerate(parts):
+                    part_lower = part.lower().strip()
+                    # Match "CGPA" but not "SGPA"
+                    if part_lower == 'cgpa' or (part_lower.startswith('cgpa') and 'sgpa' not in part_lower):
+                        cgpa_col_index = idx
+                        header_found = True
+                        break
+                continue
+            
+            # If header found, try to extract CGPA from data rows
+            if header_found and cgpa_col_index is not None and len(parts) > cgpa_col_index:
+                cgpa_val_str = parts[cgpa_col_index].strip()
+                # Skip empty cells
+                if not cgpa_val_str or cgpa_val_str.lower() in ['', '-', 'n/a', 'na']:
+                    continue
+                # Check if it's a valid CGPA value (number with optional decimal)
+                cgpa_match = re.match(r'^([0-9](?:\.[0-9]+)?)$', cgpa_val_str)
+                if cgpa_match:
+                    try:
+                        cgpa_val = float(cgpa_match.group(1))
+                        if 0 <= cgpa_val <= 10:  # Valid CGPA range
+                            if cgpa_val not in seen_cgpa:
+                                cgpa_values.append(cgpa_val)
+                                seen_cgpa.add(cgpa_val)
+                    except (ValueError, AttributeError):
+                        pass
+        
+        # Return the last non-empty CGPA value (cumulative CGPA is usually in the last row)
+        if cgpa_values:
+            return str(cgpa_values[-1])
+        
+        # Fallback: Try pattern matching on individual lines for table-like structures
+        # Look for patterns like: "II | 22 | 156 | 7.09 | 7.45 | PASSED"
+        # This handles cases where the header wasn't detected but the structure is clear
+        for line in lines_list:
+            # Pattern: Match table rows with multiple numeric columns
+            # Look for: SEM (I/II/III) | numbers | numbers | SGPA | CGPA | text
+            if '|' in line:
+                parts = [p.strip() for p in line.split('|')]
+                # Check if this looks like a data row (has multiple numeric values)
+                numeric_count = sum(1 for p in parts if re.match(r'^[0-9]+(?:\.[0-9]+)?$', p.strip()))
+                if numeric_count >= 3:  # At least 3 numeric columns (TTCR, TTCP, SGPA, possibly CGPA)
+                    # Look for CGPA-like values (0-10 range) in the later columns
+                    for part in parts[3:]:  # Check columns after SEM, TTCR, TTCP
+                        part = part.strip()
+                        cgpa_match = re.match(r'^([0-9](?:\.[0-9]+)?)$', part)
+                        if cgpa_match:
+                            try:
+                                cgpa_val = float(cgpa_match.group(1))
+                                if 0 <= cgpa_val <= 10:
+                                    # Additional check: if there's a "PASSED" or similar after it, likely CGPA
+                                    line_lower = line.lower()
+                                    if 'passed' in line_lower or 'result' in line_lower or len(parts) >= 5:
+                                        if cgpa_val not in seen_cgpa:
+                                            cgpa_values.append(cgpa_val)
+                                            seen_cgpa.add(cgpa_val)
+                            except ValueError:
+                                pass
+        
+        # Another fallback: Look for CGPA in context of table-like structures
+        # Find lines near "CGPA" header that contain numeric values
+        for i, line in enumerate(lines_list):
+            # Check if nearby lines mention CGPA
+            nearby_lines = lines_list[max(0, i-3):min(len(lines_list), i+4)]
+            nearby_text = ' '.join(nearby_lines).lower()
+            if 'cgpa' in nearby_text and ('sem' in nearby_text or 'ttcr' in nearby_text or 'ttcp' in nearby_text):
+                # This looks like a table with CGPA column
+                if '|' in line:
+                    parts = [p.strip() for p in line.split('|')]
+                else:
+                    parts = re.split(r'\s{2,}', line.strip())
+                # Look for CGPA-like values in numeric columns
+                for part in parts:
+                    part = part.strip()
+                    cgpa_match = re.match(r'^([0-9](?:\.[0-9]+)?)$', part)
+                    if cgpa_match:
+                        try:
+                            cgpa_val = float(cgpa_match.group(1))
+                            # Exclude common non-CGPA values
+                            if 0 <= cgpa_val <= 10 and cgpa_val not in [22, 172, 156, 1, 2]:
+                                if cgpa_val not in seen_cgpa:
+                                    cgpa_values.append(cgpa_val)
+                                    seen_cgpa.add(cgpa_val)
+                        except ValueError:
+                            pass
+        
+        return str(cgpa_values[-1]) if cgpa_values else None
+    
+    # Try table extraction first
+    cgpa_from_table = extract_cgpa_from_table(lines)
+    
+    # Fall back to original pattern matching if table extraction didn't work
+    cgpa = cgpa_from_table or find_first([
         rf"(?:CGPA|SGPA)\s*{sep}\s*([0-9](?:\.[0-9]+)?)",
         rf"(?:CGPA|SGPA)\s*{sep}\s*([0-9](?:\.[0-9]+)?)(?:\s*/\s*10)?",
+        # Also try patterns without separator (for table cells)
+        rf"\bCGPA\b.*?([0-9](?:\.[0-9]+)?)(?:\s|$)",
+        rf"([0-9](?:\.[0-9]+)?)\s*(?:/\s*10)?\s*(?:CGPA|CGPA\s*:)",
     ])
 
     subjects = []
