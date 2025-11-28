@@ -1,119 +1,91 @@
-# sem_three_eligify
+# ELIGIFY
 
-## Overview
-ELIGIFY is a simple Flask-backed app with a frontend for exam eligibility checks. The backend exposes an endpoint to parse PDF files. PDF parsing now prefers the embedded text layer (PyPDF2) and falls back to OCR via Tesseract when needed.
+ELIGIFY is a Flask web application that helps candidates find exams they are eligible for and verify academic credentials by parsing PDFs or images of marksheets. The project includes a secure API, a Tailwind-based UI, and optional Google Sign-In.
+
+## Features
+- Exam browsing with eligibility checks on the client and server (`services/exam_repository.py`).
+- PDF and image parsing for marksheets with text-layer extraction and OCR fallback (`lib/pdf_parser.py`).
+- Secure file upload validation, rate limiting, and response sanitization (`middleware/security.py`).
+- Optional Google Sign-In for authenticated API usage (`controllers/auth_controller.py`).
+- SQLite by default, configurable `DATABASE_URL` for other databases (`services/db.py`).
+
+## Tech Stack
+- Backend: `Flask`, `SQLAlchemy`
+- Parsing/OCR: `PyPDF2`, `pdf2image`, `pytesseract`, `Pillow`, `opencv-python`
+- Frontend: Tailwind via CDN, vanilla JS modules under `static/js`
+
+## Quick Start
+1. Create a virtual environment: `python -m venv .venv`
+2. Upgrade pip: `.\.venv\Scripts\python.exe -m pip install --upgrade pip`
+3. Install dependencies: `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`
+4. Run the server: `.\.venv\Scripts\python.exe app.py`
+5. Open `http://127.0.0.1:3000/` in a browser.
+
+## Configuration
+Environment variables loaded from the process and optionally `.env.local` in the repo root (`app.py`).
+
+- `SECRET_KEY`: Flask session secret (default dev-only value).
+- `GOOGLE_CLIENT_ID`: OAuth Client ID to enable Google Sign-In. If unset, the app attempts to read `client_secret_*.json` from known locations.
+- `FLASK_DEBUG`: Set to `true` to enable debug mode.
+- `DATABASE_URL`: SQLAlchemy connection string. Defaults to `sqlite:///eligify.db`.
+- `TESSERACT_CMD`: Path to `tesseract.exe` if not at the default.
+- `POPPLER_PATH`: Path to Poppler `bin` directory for `pdf2image`.
 
 ## OCR Setup (Windows)
-To use the OCR-based PDF parser, install these prerequisites:
-
 - Install Tesseract OCR: https://github.com/UB-Mannheim/tesseract/wiki
-  - Default install path: `C:\Program Files\Tesseract-OCR\tesseract.exe`
-  - Optionally set env var `TESSERACT_CMD` to the full path of `tesseract.exe`.
+  - Default Windows path: `C:\\Program Files\\Tesseract-OCR\\tesseract.exe`
+- Install Poppler for Windows: https://github.com/oschwartz10612/poppler-windows/releases/
+  - Add `bin` to `PATH` or set `POPPLER_PATH` to the Poppler `bin` directory.
 
-- Install Poppler for Windows (required by `pdf2image`):
-  - Download from: https://github.com/oschwartz10612/poppler-windows/releases/
-  - Add the `bin` folder to your system `PATH`.
-  - Alternatively, set environment variable `POPPLER_PATH` to the Poppler `bin` directory and the app will use it. Example:
-    - PowerShell (current session): `$env:POPPLER_PATH = 'C:\\Tools\\poppler-24.08.0\\Library\\bin'`
-    - Permanent: `setx POPPLER_PATH "C:\\Tools\\poppler-24.08.0\\Library\\bin"`
-
-### Windows Quick Setup Commands
-
-Run these in PowerShell:
-
+Example PowerShell (current session):
 ```
-# Set for current session
 $env:TESSERACT_CMD = 'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
 $env:POPPLER_PATH = 'C:\\Tools\\poppler-24.08.0\\Library\\bin'
-
-# Persist for future sessions
-setx TESSERACT_CMD "C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
-setx POPPLER_PATH "C:\\Tools\\poppler-24.08.0\\Library\\bin"
 ```
 
-Note: `method="text"` does not require Poppler/Tesseract; `method="ocr"` requires both.
+## API Endpoints
+Base URL: `http://127.0.0.1:3000/`
 
-## Python Dependencies
-Install Python packages:
+- `GET /api/exams` — List all exams.
+- `POST /api/candidate-profile` — Save candidate profile. Auth required.
+- `POST /api/parse-pdf?method=auto|text|ocr&dpi=300` — Parse a PDF. Auth required.
+- `POST /api/parse-marksheet?method=auto|text|ocr&dpi=300` — Parse marksheet PDF or image. Auth required.
+- `POST /api/verify-academic?stage=10|12|UG&entered=NN.NN` — Verify extracted marks against entered values. Auth required.
 
+Auth routes:
+- `GET /login` — Google Sign-In page.
+- `POST /auth/google` — Callback for Google Sign-In.
+- `POST /logout` — Log out.
+
+## Frontend
+- Main template: `templates/index.html`
+- JS modules: `static/js`
+  - `views` for UI
+  - `models` and `services` for client logic
+
+## Security
+- Response security headers (`middleware/security.py:16`).
+- Strict file validation: type, size, filename (`middleware/security.py:99`).
+- Input sanitization to prevent XSS (`middleware/security.py:38`).
+- Simple in-memory rate limiting (`middleware/security.py:172`).
+
+## Project Structure
 ```
-pip install -r requirements.txt
-```
-
-`requirements.txt` includes: `flask`, `PyPDF2`, `pytesseract`, `pdf2image`, `Pillow`, `opencv-python`.
-
-Notes:
-- PyPDF2 is used to extract text from PDFs that have a selectable text layer (no extra system dependencies).
-- OpenCV is used to pre-process scanned pages before OCR.
-
-## Run the App
-Start the Flask server:
-
-```
-python app.py
-```
-
-Visit `http://localhost:3000/` in a browser.
-
-## PDF Parsing API
-- Endpoint: `POST /api/parse-pdf`
-- Form field: `file` (PDF)
-- Optional query params:
-  - `method`: `auto` (default), `text`, or `ocr`
-  - `dpi`: integer DPI for rasterization (default `300`)
-
-- Response:
-
-```
-{
-  "text": "...extracted text...",
-  "method": "auto"
-}
-```
-
-### Example (curl)
-
-```
-curl -F "file=@C:\\path\\to\\your.pdf" "http://localhost:3000/api/parse-pdf?method=auto&dpi=300"
+controllers/           # Flask blueprints: web, api, auth
+middleware/            # Security headers, validation, rate limiting
+models/                # Dataclasses and SQLAlchemy models
+services/              # DB init, exam repository, business logic
+lib/                   # PDF/marksheet parsing utilities
+static/                # Frontend assets (css/js)
+templates/             # HTML templates
+app.py                 # Flask app entrypoint
+requirements.txt       # Python dependencies
 ```
 
-## How To Use (Library)
+## Development Tips
+- For OCR endpoints, ensure Tesseract and Poppler are installed; otherwise responses may indicate missing prerequisites.
+- The default DB is SQLite; to use Postgres, set `DATABASE_URL` and ensure `psycopg2-binary` is installed.
+- Google Sign-In is optional; API endpoints requiring auth return `401` if unauthenticated.
 
-You can import and call the parser directly in Python code.
-
-### Simple import and call
-
-```
-from lib.pdf_parser import extract_text_from_pdf
-
-text = extract_text_from_pdf("lib/test_input.pdf")
-print(text)
-```
-
-### Control parsing strategy
-
-```
-# Prefer text layer, fallback to OCR if empty (default)
-text_auto = extract_text_from_pdf("lib/test_input.pdf", method="auto")
-
-# Force text-layer only (PyPDF2)
-text_text = extract_text_from_pdf("lib/test_input.pdf", method="text")
-
-# Force OCR-only (Tesseract)
-text_ocr = extract_text_from_pdf("lib/test_input.pdf", method="ocr", dpi=300)
-```
-
-### Using with uploaded files (Flask `request.files['file']`)
-
-```
-from flask import request
-from lib.pdf_parser import extract_text_from_pdf
-
-@app.post('/api/parse-pdf')
-def parse_pdf_ep():
-    f = request.files.get('file')
-    if not f:
-        return {"error": "No file uploaded."}, 400
-    text = extract_text_from_pdf(f)  # defaults to method="auto"
-    return {"text": text}
-```
+## License
+Proprietary. All rights reserved. Contact the maintainers for licensing inquiries.
