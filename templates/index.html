@@ -98,7 +98,7 @@
                 {% endif %}
 
                 <div class="flex items-center gap-3 mt-6">
-                <button id="submitEligibility" type="submit" class="flex-1 bg-gray-400 cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg shadow-gray-400" disabled>
+                <button id="submitEligibility" type="submit" class="flex-1 bg-gray-900 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg shadow-gray-400">
                     Check Eligibility Now
                 </button>
                 {% if not user %}
@@ -654,12 +654,12 @@
         const needsV12 = !state.na12;
         const needsVUG = !state.naUG;
         
-        // All required verifications must be complete
-        const ok = (!needsV10 || state.v10) && (!needsV12 || state.v12) && (!needsVUG || state.vUG);
+        // All required verifications must be complete (bypassed to make it optional)
+        const ok = true;
         
         if (btn){
-            btn.disabled = !ok;
-            btn.className = ok ? 'bg-green-600 text-white font-bold py-3 px-4 rounded' : 'bg-gray-400 text-white font-bold py-3 px-4 rounded cursor-not-allowed';
+            btn.disabled = false;
+            btn.className = 'bg-green-600 text-white font-bold py-3 px-4 rounded';
         }
         if (msg){
             const requiredCreds = [];
